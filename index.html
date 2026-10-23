@@ -1,0 +1,3351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopFlow KH - Enterprise Retail POS & Inventory</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Fonts: Inter & Kantumruy Pro for Khmer typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Kantumruy+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- QRCode.js for client-side EMVCo QR rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- html5-qrcode for Webcam Barcode Reading -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- Supabase JS Client v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#075985',
+              800: '#0c4a6e',
+              900: '#082f49'
+            },
+            khmerRed: '#D91F26',
+            khmerBlue: '#032EA1',
+            bakongRed: '#E1192A'
+          },
+          fontFamily: {
+            sans: ['Inter', 'Kantumruy Pro', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    .scanner-laser {
+      position: absolute;
+      top: 50%;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: #ef4444;
+      box-shadow: 0 0 12px #ef4444;
+      animation: laserSweep 2s infinite ease-in-out;
+    }
+    @keyframes laserSweep {
+      0%, 100% { transform: translateY(-50px); opacity: 0.9; }
+      50% { transform: translateY(50px); opacity: 0.4; }
+    }
+
+    @media print {
+      body * { visibility: hidden; }
+      #printableThermalReceipt, #printableThermalReceipt * { visibility: visible; }
+      #printableThermalReceipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80mm;
+        margin: 0;
+        padding: 8px;
+        background: white;
+        color: black !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased font-sans flex h-screen overflow-hidden select-none">
+
+  <!-- ================= AUTH OVERLAY (LOGIN / SIGNUP) ================= -->
+  <div id="authScreen" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="bg-gradient-to-br from-[#0c192c] via-[#132644] to-[#0284c7] p-6 text-white text-center relative">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 mb-3 shadow">
+          <i data-lucide="store" class="w-6 h-6 text-sky-300"></i>
+        </div>
+        <div class="flex items-center justify-center gap-2">
+          <h2 class="text-xl font-bold tracking-tight">ShopFlow</h2>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-khmerRed text-white">KH</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Enterprise</span>
+        </div>
+        <p class="text-xs text-sky-200 mt-1" data-i18n="auth_subtitle">Cambodia Retail POS & Inventory Platform</p>
+      </div>
+
+      <div class="flex border-b border-slate-200 text-xs font-semibold">
+        <button id="authTabLogin" onclick="switchAuthMode('login')" class="flex-1 py-3 text-center border-b-2 border-brand-600 text-brand-600 transition">
+          <span data-i18n="auth_btn_login">Sign In</span>
+        </button>
+        <button id="authTabSignup" onclick="switchAuthMode('signup')" class="flex-1 py-3 text-center text-slate-400 hover:text-slate-600 transition">
+          <span data-i18n="auth_btn_register">Register New Shop</span>
+        </button>
+      </div>
+
+      <form id="authForm" onsubmit="handleAuthSubmit(event)" class="p-6 space-y-4 text-xs">
+        <div id="authShopNameField" class="hidden space-y-1">
+          <label class="font-semibold text-slate-700" data-i18n="auth_shop_name">Shop / Business Name *</label>
+          <input type="text" id="authShopNameInput" placeholder="e.g. Phnom Penh Daily Mart" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+        </div>
+
+        <div class="space-y-1">
+          <label class="font-semibold text-slate-700" data-i18n="auth_email">Email Address *</label>
+          <input type="email" id="authEmailInput" required placeholder="owner@mart.kh or cashier@mart.kh" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+        </div>
+
+        <div class="space-y-1">
+          <label class="font-semibold text-slate-700" data-i18n="auth_password">Password *</label>
+          <input type="password" id="authPasswordInput" required placeholder="••••••••" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+        </div>
+
+        <div id="authRoleField" class="space-y-1">
+          <label class="font-semibold text-slate-700" data-i18n="auth_role">Default User Role</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 p-2 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+              <input type="radio" name="authRole" value="owner" checked class="text-sky-600">
+              <span class="text-[11px] font-medium text-slate-700">Shop Owner / Manager</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+              <input type="radio" name="authRole" value="cashier" class="text-sky-600">
+              <span class="text-[11px] font-medium text-slate-700">Cashier POS Only</span>
+            </label>
+          </div>
+        </div>
+
+        <button type="submit" id="authSubmitBtn" class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-2">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span id="authSubmitText" data-i18n="auth_submit_login">Log In to ShopFlow</span>
+        </button>
+
+        <div class="pt-3 border-t border-slate-100 flex flex-col gap-2">
+          <button type="button" onclick="continueDemoMode('owner')" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-[11px] transition flex items-center justify-center gap-1.5">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-sky-600"></i>
+            <span>Test Mode: Instant Sign-In as <strong>Shop Owner</strong></span>
+          </button>
+          <button type="button" onclick="continueDemoMode('cashier')" class="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl font-medium text-[11px] transition flex items-center justify-center gap-1.5">
+            <i data-lucide="user" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Test Mode: Instant Sign-In as <strong>Cashier</strong></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="w-64 bg-[#0a1422] text-slate-300 flex flex-col flex-shrink-0 border-r border-slate-800 select-none z-20">
+    <div class="p-4 flex items-center justify-between border-b border-slate-800/80">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-blue-700 flex items-center justify-center shadow-lg text-white font-bold text-lg">
+          <i data-lucide="store" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold text-white text-base tracking-tight">ShopFlow</span>
+            <span class="px-1 py-0.5 rounded text-[9px] font-extrabold bg-khmerRed text-white">KH</span>
+          </div>
+          <p class="text-xs text-slate-400 truncate max-w-[130px]" id="sideShopName">SC Jewelry Mart</p>
+        </div>
+      </div>
+      <button onclick="openSupabaseConfigModal()" id="dbStatusBadge" title="Supabase Database Settings" class="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 transition flex items-center justify-center">
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-400" id="dbStatusDot"></span>
+      </button>
+    </div>
+
+    <!-- Active User & Multi-tenant Profile Tag -->
+    <div class="px-4 py-2.5 bg-[#070e18] border-b border-slate-800 flex items-center justify-between text-[11px]">
+      <div class="flex items-center gap-2 truncate">
+        <div class="w-6 h-6 rounded-full bg-sky-900 text-sky-200 font-bold flex items-center justify-center text-[10px]" id="userAvatarText">O</div>
+        <div class="truncate">
+          <div class="font-semibold text-slate-200 truncate" id="sideUserEmail">owner@shopflow.kh</div>
+          <div class="text-[10px] text-emerald-400 flex items-center gap-1">
+            <span id="sideUserRoleTag">Owner</span>
+            <span class="text-slate-600">•</span>
+            <span class="font-mono text-slate-500 truncate" id="sideShopIdBadge">shop_demo</span>
+          </div>
+        </div>
+      </div>
+      <button onclick="handleSignOut()" title="Sign Out" class="p-1 rounded text-slate-400 hover:text-rose-400 transition">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+
+    <!-- Navigation -->
+    <div class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+      <div>
+        <p class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2" data-i18n="nav_main">RETAIL OPERATIONS</p>
+        <nav class="space-y-1">
+          <button onclick="navigateTo('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white bg-brand-600 shadow-sm transition">
+            <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+            <span data-i18n="menu_dashboard">Dashboard</span>
+          </button>
+          <button onclick="navigateTo('pos')" id="nav-pos" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+            <div class="flex items-center gap-3">
+              <i data-lucide="shopping-bag" class="w-4 h-4 text-emerald-400"></i>
+              <span data-i18n="menu_pos">POS Terminal</span>
+            </div>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Sell</span>
+          </button>
+          <button onclick="navigateTo('inventory')" id="nav-inventory" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+            <div class="flex items-center gap-3">
+              <i data-lucide="boxes" class="w-4 h-4 text-sky-400"></i>
+              <span data-i18n="menu_inventory">Stock Management</span>
+            </div>
+            <span id="lowStockBadge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300">0</span>
+          </button>
+          <button onclick="navigateTo('scanner')" id="nav-scanner" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+            <i data-lucide="scan-barcode" class="w-4 h-4 text-amber-400"></i>
+            <span data-i18n="menu_scanner">Barcode Scanner</span>
+          </button>
+        </nav>
+      </div>
+
+      <div>
+        <p class="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2" data-i18n="nav_records">AUDIT & SETTINGS</p>
+        <nav class="space-y-1">
+          <button onclick="navigateTo('reports')" id="nav-reports" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+            <i data-lucide="bar-chart-3" class="w-4 h-4 text-purple-400"></i>
+            <span data-i18n="menu_reports">Daily Closing & Sales</span>
+          </button>
+          <button onclick="navigateTo('settings')" id="nav-settings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-slate-400"></i>
+            <span data-i18n="menu_settings">KHQR & Shop Settings</span>
+          </button>
+          <button onclick="openSchemaModal()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-emerald-400 hover:bg-emerald-950/40 transition">
+            <i data-lucide="database" class="w-4 h-4"></i>
+            <span data-i18n="menu_schema">SQL Migration Script</span>
+          </button>
+        </nav>
+      </div>
+    </div>
+
+    <!-- Language Selector & Currency Footer -->
+    <div class="p-3 border-t border-slate-800 bg-[#070e18] space-y-3">
+      <div class="flex items-center justify-between bg-slate-900 rounded-xl p-1 border border-slate-800 text-xs">
+        <button id="lang-en" onclick="setLanguage('en')" class="flex-1 py-1 px-2 rounded-lg font-medium text-center transition bg-brand-600 text-white">
+          English
+        </button>
+        <button id="lang-km" onclick="setLanguage('km')" class="flex-1 py-1 px-2 rounded-lg font-medium text-center transition text-slate-400 hover:text-white">
+          ភាសាខ្មែរ
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+        <span>1 USD = <strong class="text-white" id="navExchangeRate">4,100</strong> ៛</span>
+        <button onclick="openSupabaseConfigModal()" class="text-[10px] text-sky-400 hover:underline">Config Cloud DB</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <main class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-100">
+    <!-- Top Header Bar -->
+    <header class="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0 z-10 shadow-xs">
+      <div class="flex items-center gap-3">
+        <h1 class="text-lg font-bold text-slate-900 tracking-tight" id="pageTitle">Dashboard</h1>
+        <div class="hidden sm:flex items-center gap-2 text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+          <i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span id="currentDateStr">--</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="relative hidden md:block">
+          <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          <input type="text" id="quickGlobalSearch" oninput="handleGlobalSearch(this.value)" placeholder="Scan barcode or type SKU..." class="w-56 pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 bg-slate-50/70">
+        </div>
+
+        <button id="headerBtnAddProduct" onclick="openAddProductModal()" class="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <span data-i18n="btn_add_product">New Product</span>
+        </button>
+
+        <button onclick="navigateTo('pos')" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition">
+          <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+          <span data-i18n="btn_open_pos">Cashier POS</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Content Workspace -->
+    <div class="flex-1 overflow-y-auto p-6 space-y-6" id="mainContentContainer">
+
+      <!-- ================= SECTION: DASHBOARD ================= -->
+      <div id="view-dashboard" class="view-panel space-y-6">
+        <!-- Daily Stock Closing Banner -->
+        <div class="bg-gradient-to-r from-[#0c192c] via-[#102a4e] to-sky-900 rounded-3xl p-5 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-slate-800">
+          <div class="flex items-center gap-4">
+            <div class="p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20">
+              <i data-lucide="calendar-check-2" class="w-6 h-6 text-sky-300"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-base tracking-tight" data-i18n="daily_closing_title">Daily Stock Closing</h3>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30" id="closingStatusPill">
+                  ● Up to date
+                </span>
+              </div>
+              <p class="text-xs text-sky-200 mt-0.5">
+                <span data-i18n="last_closed_text">Last closed:</span> <span id="lastClosedLabel" class="font-semibold text-white">Today</span> • <span data-i18n="closing_desc">Recomputes stock in hand, receipts and recorded sales.</span>
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 self-end md:self-auto">
+            <button onclick="runDailyClosing()" id="btnRunClosing" class="px-4 py-2 bg-white text-sky-950 hover:bg-sky-50 font-bold text-xs rounded-xl shadow transition active:scale-95 flex items-center gap-1.5">
+              <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
+              <span data-i18n="btn_run_closing">Run Closing</span>
+            </button>
+            <button onclick="fetchRemoteOrLocalData()" class="p-2 bg-sky-800/80 hover:bg-sky-700 text-sky-200 hover:text-white rounded-xl transition" title="Sync with Cloud Database">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Metric Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition">
+            <div class="flex items-center justify-between text-slate-500 text-xs font-semibold">
+              <span data-i18n="card_total_stock">Total Stock</span>
+              <div class="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div class="text-2xl font-bold text-slate-900" id="metricTotalStock">0</div>
+              <p class="text-xs text-slate-500 mt-1"><span id="metricVariantsCount">0</span> <span data-i18n="card_variants">variants active</span></p>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition">
+            <div class="flex items-center justify-between text-slate-500 text-xs font-semibold">
+              <span data-i18n="card_total_products">Total Products</span>
+              <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <i data-lucide="package" class="w-4 h-4"></i>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div class="text-2xl font-bold text-slate-900" id="metricTotalProducts">0</div>
+              <p class="text-xs text-slate-500 mt-1" data-i18n="card_in_catalog">Items in inventory</p>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition">
+            <div class="flex items-center justify-between text-slate-500 text-xs font-semibold">
+              <span data-i18n="card_today_sales">Today's Sales</span>
+              <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <i data-lucide="trending-up" class="w-4 h-4"></i>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div class="text-2xl font-bold text-slate-900" id="metricTodaySalesUSD">$0.00</div>
+              <p class="text-xs text-emerald-600 font-semibold mt-1" id="metricTodaySalesKHR">0 ៛</p>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition">
+            <div class="flex items-center justify-between text-slate-500 text-xs font-semibold">
+              <span data-i18n="card_low_stock">Low Stock Items</span>
+              <div class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+              </div>
+            </div>
+            <div class="mt-3 flex items-baseline justify-between">
+              <div class="text-2xl font-bold text-amber-600" id="metricLowStockCount">0</div>
+              <span class="text-xs text-rose-500 font-semibold" id="metricOutOfStockCount">0 out of stock</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="card_attention_req">Requires restocking</p>
+          </div>
+        </div>
+
+        <!-- Stock Inventory Section Header & Tabs -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="font-bold text-slate-900 text-base" data-i18n="stock_inventory_title">Stock Inventory</h2>
+              <p class="text-xs text-slate-500" id="stockShowingCount">Showing 0 of 0 stock items</p>
+            </div>
+
+            <div class="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl text-xs font-semibold">
+              <button onclick="setStockFilter('all')" id="tab-all" class="stock-tab-btn px-3 py-1.5 rounded-xl bg-white shadow-xs text-brand-700 transition">
+                <span data-i18n="tab_todays_stock">Today's Stock</span> (<span id="tabCountAll">0</span>)
+              </button>
+              <button onclick="setStockFilter('low')" id="tab-low" class="stock-tab-btn px-3 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 transition">
+                <span data-i18n="tab_low_stock">Low Stock</span> (<span id="tabCountLow">0</span>)
+              </button>
+              <button onclick="setStockFilter('out')" id="tab-out" class="stock-tab-btn px-3 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 transition">
+                <span data-i18n="tab_out_of_stock">Out of Stock</span> (<span id="tabCountOut">0</span>)
+              </button>
+            </div>
+          </div>
+
+          <div class="px-5 py-3 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between gap-4">
+            <div class="relative flex-1 max-w-md">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input type="text" id="inventorySearchInput" oninput="renderInventoryTable()" placeholder="Search product, SKU, or barcode..." class="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white">
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btnBulkReceive" onclick="openReceiveStockModal()" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-xl transition flex items-center gap-1.5">
+                <i data-lucide="arrow-down-left" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span data-i18n="btn_bulk_receive">Stock Receipt</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Inventory Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50/50 text-slate-500 font-bold uppercase tracking-wider">
+                  <th class="py-3 px-4" data-i18n="th_product">Product</th>
+                  <th class="py-3 px-4" data-i18n="th_variant">SKU / Barcode</th>
+                  <th class="py-3 px-4" data-i18n="th_movement">Stock Movement</th>
+                  <th class="py-3 px-4" data-i18n="th_pricing">Price (USD / KHR)</th>
+                  <th class="py-3 px-4 text-center" data-i18n="th_status">Status</th>
+                  <th class="py-3 px-4 text-right" data-i18n="th_actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTableBody" class="divide-y divide-slate-100 font-medium"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SECTION: POS / CASHIER TERMINAL ================= -->
+      <div id="view-pos" class="view-panel hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full items-start">
+          
+          <!-- Catalog & Barcode Fast Scanner Input (Col 7) -->
+          <div class="lg:col-span-7 space-y-4">
+            <div class="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-3">
+              <div class="p-2.5 bg-sky-50 text-sky-600 rounded-2xl">
+                <i data-lucide="barcode" class="w-5 h-5"></i>
+              </div>
+              <div class="flex-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block" data-i18n="pos_barcode_label">Scan Barcode or Type SKU</label>
+                <input type="text" id="posBarcodeInput" onkeydown="handleBarcodeEnter(event)" placeholder="Point USB scanner or type code and press Enter..." autofocus class="w-full mt-0.5 text-sm font-mono font-medium text-slate-900 border-b border-slate-200 focus:border-sky-600 focus:outline-none pb-1 bg-transparent">
+              </div>
+              <button onclick="navigateTo('scanner')" class="px-3 py-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl flex items-center gap-1.5 transition">
+                <i data-lucide="camera" class="w-3.5 h-3.5 text-sky-600"></i>
+                <span data-i18n="btn_camera_scan">Camera</span>
+              </button>
+            </div>
+
+            <!-- Category Filters -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1" id="posCategoryFilters"></div>
+
+            <!-- Product Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[580px] overflow-y-auto pr-1" id="posProductGrid"></div>
+          </div>
+
+          <!-- Cart & Checkout (Col 5) -->
+          <div class="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-xs p-5 flex flex-col h-[740px]">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <i data-lucide="receipt" class="w-4 h-4 text-sky-600"></i>
+                <h3 class="font-bold text-slate-900 text-sm" data-i18n="pos_current_order">Current Sale Order</h3>
+              </div>
+              <button onclick="clearCart()" class="text-xs text-rose-500 hover:text-rose-700 font-semibold transition" data-i18n="btn_clear_cart">Clear Cart</button>
+            </div>
+
+            <!-- Cart Items -->
+            <div class="flex-1 overflow-y-auto py-3 space-y-2.5 divide-y divide-slate-100" id="posCartList"></div>
+
+            <!-- Summary & Payment -->
+            <div class="pt-4 border-t border-slate-200 space-y-3 bg-slate-50/80 p-4 rounded-2xl mt-2">
+              <div class="flex justify-between text-xs text-slate-600">
+                <span data-i18n="pos_subtotal">Subtotal</span>
+                <span class="font-semibold" id="posSubtotalUSD">$0.00</span>
+              </div>
+              <div class="flex justify-between items-baseline pt-1">
+                <span class="text-sm font-bold text-slate-900" data-i18n="pos_total">Total Due:</span>
+                <div class="text-right">
+                  <div class="text-xl font-black text-sky-900" id="posTotalUSD">$0.00</div>
+                  <div class="text-xs font-bold text-emerald-600" id="posTotalKHR">0 ៛</div>
+                </div>
+              </div>
+
+              <!-- Payment Method Tabs -->
+              <div class="grid grid-cols-2 gap-2 pt-1">
+                <button type="button" onclick="selectPaymentMethod('cash')" id="btnPayMethodCash" class="py-2 px-2 rounded-xl border border-sky-600 bg-sky-50 text-sky-700 font-bold text-xs flex items-center justify-center gap-1.5 transition">
+                  <i data-lucide="banknote" class="w-4 h-4"></i>
+                  <span>Cash Payment</span>
+                </button>
+                <button type="button" onclick="selectPaymentMethod('khqr')" id="btnPayMethodKHQR" class="py-2 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-slate-50 transition">
+                  <i data-lucide="qr-code" class="w-4 h-4 text-bakongRed"></i>
+                  <span>Dynamic KHQR</span>
+                </button>
+              </div>
+
+              <!-- Cash Tender Form -->
+              <div id="cashTenderSection" class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider" data-i18n="pos_tendered">Received</label>
+                  <select id="tenderCurrency" onchange="calculateChange()" class="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white font-semibold">
+                    <option value="USD">USD ($)</option>
+                    <option value="KHR">KHR (៛)</option>
+                  </select>
+                  <input type="number" step="0.01" id="tenderAmountInput" oninput="calculateChange()" placeholder="0.00" class="flex-1 text-right text-xs font-bold border border-slate-300 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-sky-500 focus:outline-none">
+                </div>
+                <div class="flex justify-between items-center text-xs font-semibold bg-white p-2 rounded-xl border border-slate-200">
+                  <span class="text-slate-600" data-i18n="pos_change">Change:</span>
+                  <div class="text-right">
+                    <span id="posChangeUSD" class="font-bold text-emerald-600">$0.00</span>
+                    <span class="text-[11px] text-slate-500 ml-1">(<span id="posChangeKHR">0 ៛</span>)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- KHQR Live Trigger Banner -->
+              <div id="khqrPromptSection" class="hidden p-3 bg-red-50 border border-red-200 rounded-2xl text-center space-y-2">
+                <div class="flex items-center justify-center gap-2 text-bakongRed font-bold text-xs">
+                  <i data-lucide="qr-code" class="w-4 h-4"></i>
+                  <span>Bakong EMVCo Dynamic KHQR Ready</span>
+                </div>
+                <p class="text-[11px] text-slate-600">Click below to generate the exact payable QR with sound verification.</p>
+              </div>
+
+              <button onclick="handleCheckoutButtonTrigger()" id="btnCheckout" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow transition flex items-center justify-center gap-2">
+                <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                <span id="btnCheckoutText" data-i18n="btn_complete_sale">Complete Sale (Atomic Save)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SECTION: BARCODE SCANNER ================= -->
+      <div id="view-scanner" class="view-panel hidden space-y-6">
+        <div class="max-w-2xl mx-auto space-y-6">
+          <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h2 class="text-base font-bold text-slate-900" data-i18n="scanner_title">Webcam Barcode Scanner</h2>
+                <p class="text-xs text-slate-500" data-i18n="scanner_subtitle">Scan product barcodes (EAN-13, UPC-A, Code 128) using your laptop or phone camera.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btnStartCamera" onclick="startScanner()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                  <i data-lucide="video" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="btn_start_camera">Start Camera</span>
+                </button>
+                <button id="btnStopCamera" onclick="stopScanner()" class="hidden px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                  <i data-lucide="video-off" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="btn_stop_camera">Stop Camera</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Camera Viewport with laser overlay -->
+            <div class="mt-5 relative bg-slate-950 rounded-2xl overflow-hidden aspect-video flex items-center justify-center border-2 border-dashed border-slate-700">
+              <div id="reader" class="w-full h-full"></div>
+              <div id="scannerOverlay" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 p-4 text-center pointer-events-none">
+                <i data-lucide="scan" class="w-12 h-12 stroke-[1.2] text-slate-500 mb-2"></i>
+                <p class="text-xs font-medium text-slate-300">Click "Start Camera" to scan product packaging</p>
+                <p class="text-[11px] text-slate-500 mt-1">Direct USB laser barcode scanners work automatically anywhere</p>
+              </div>
+              <div id="laserLine" class="scanner-laser hidden"></div>
+            </div>
+
+            <!-- Manual Barcode Simulator -->
+            <div class="mt-5 pt-4 border-t border-slate-100">
+              <label class="text-xs font-semibold text-slate-600 block mb-1.5" data-i18n="scanner_test_input">Or Test with Barcode Simulator:</label>
+              <div class="flex gap-2">
+                <input type="text" id="manualScannerInput" placeholder="e.g. 8850000000001, 8850000000003" class="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono">
+                <button onclick="handleSimulatedScan()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition">
+                  <span data-i18n="btn_lookup">Lookup Code</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Scan Result Preview -->
+            <div id="scannedProductResult" class="hidden mt-5 p-4 rounded-2xl bg-sky-50 border border-sky-200 text-xs">
+              <div class="flex items-start justify-between">
+                <div>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-200 text-sky-800" data-i18n="badge_scanned">SCANNED ITEM</span>
+                  <h4 class="font-bold text-slate-900 text-sm mt-1" id="scannedName">--</h4>
+                  <p class="text-slate-600 text-xs mt-0.5">Barcode: <span id="scannedBarcode" class="font-mono font-medium">--</span></p>
+                  <p class="text-slate-600 text-xs">Stock on hand: <span id="scannedStock" class="font-bold text-slate-900">0</span></p>
+                </div>
+                <div class="text-right">
+                  <div class="text-base font-bold text-sky-700" id="scannedPrice">--</div>
+                  <button onclick="addScannedToCart()" class="mt-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-sm flex items-center gap-1 text-xs">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    <span data-i18n="btn_add_to_sale">Add to Sale</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SECTION: REPORTS & CLOSING ================= -->
+      <div id="view-reports" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900" data-i18n="reports_title">Daily Sales & Inventory Reports</h2>
+            <p class="text-xs text-slate-500" data-i18n="reports_subtitle">Review transaction logs, estimated gross profit, and export records for management.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="exportSalesToCSV()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span data-i18n="btn_export_csv">Export Sales (CSV)</span>
+            </button>
+            <button onclick="exportStockToCSV()" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span data-i18n="btn_export_stock">Export Inventory</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="reportKpiGrid">
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="report_revenue">Total Revenue Today</span>
+            <div class="text-2xl font-black text-sky-900 mt-2" id="reportRevUSD">$0.00</div>
+            <p class="text-xs text-slate-500 mt-1" id="reportRevKHR">0 ៛</p>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs" id="kpiProfitCard">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="report_profit">Estimated Gross Profit</span>
+            <div class="text-2xl font-black text-emerald-600 mt-2" id="reportProfitUSD">$0.00</div>
+            <p class="text-xs text-slate-500 mt-1">Based on (Retail Price − Cost)</p>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="report_transactions">Transactions Completed</span>
+            <div class="text-2xl font-black text-slate-900 mt-2" id="reportTxCount">0</div>
+            <p class="text-xs text-slate-500 mt-1">Recorded sales in database</p>
+          </div>
+        </div>
+
+        <!-- Stock Movements Audit Ledger -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-bold text-slate-900 text-sm">Stock Movement & Audit Trail</h3>
+            <span class="text-xs text-slate-500 font-medium" id="movementsCount">0 movements</span>
+          </div>
+          <div class="overflow-x-auto max-h-56">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50/50 text-slate-500 font-bold uppercase tracking-wider">
+                  <th class="py-2.5 px-4">Time</th>
+                  <th class="py-2.5 px-4">Product</th>
+                  <th class="py-2.5 px-4">Type</th>
+                  <th class="py-2.5 px-4">Change</th>
+                  <th class="py-2.5 px-4">Reason / Reference</th>
+                </tr>
+              </thead>
+              <tbody id="movementsTableBody" class="divide-y divide-slate-100 font-medium"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sales Ledger -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-bold text-slate-900 text-sm" data-i18n="recent_sales_title">Recent Sales Transactions</h3>
+            <span class="text-xs text-slate-500 font-medium" id="salesRecordCount">0 orders recorded</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50/50 text-slate-500 font-bold uppercase tracking-wider">
+                  <th class="py-3 px-4">Receipt #</th>
+                  <th class="py-3 px-4">Date / Time</th>
+                  <th class="py-3 px-4">Items Sold</th>
+                  <th class="py-3 px-4">Payment</th>
+                  <th class="py-3 px-4">Total (USD)</th>
+                  <th class="py-3 px-4">Total (KHR)</th>
+                  <th class="py-3 px-4 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody id="salesTableBody" class="divide-y divide-slate-100 font-medium"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SECTION: SETTINGS & KHQR CONFIG ================= -->
+      <div id="view-settings" class="view-panel hidden space-y-6">
+        <div class="max-w-2xl mx-auto space-y-6">
+          <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-base font-bold text-slate-900" data-i18n="settings_title">Shop Configuration & KHQR Setup</h2>
+                <p class="text-xs text-slate-500" data-i18n="settings_subtitle">Configure your Cambodia shop profile, currency exchange, and official Bakong merchant details.</p>
+              </div>
+              <button onclick="openSupabaseConfigModal()" class="px-3 py-1.5 rounded-xl bg-sky-50 text-sky-700 text-xs font-bold hover:bg-sky-100 flex items-center gap-1.5 transition">
+                <i data-lucide="database" class="w-3.5 h-3.5"></i>
+                <span>Cloud Database</span>
+              </button>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs font-bold text-slate-700 block mb-1" data-i18n="lbl_shop_name">Shop / Business Name</label>
+                <input type="text" id="settingShopName" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500">
+              </div>
+
+              <!-- Bakong KHQR Merchant Account Parameters -->
+              <div class="p-4 bg-red-50/60 border border-red-100 rounded-2xl space-y-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded-lg bg-bakongRed text-white flex items-center justify-center font-bold text-xs">
+                    K
+                  </div>
+                  <h4 class="font-bold text-slate-900 text-xs">NBC Bakong Merchant Settings (EMVCo)</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-[11px] font-semibold text-slate-700 block mb-1">Bakong Account ID *</label>
+                    <input type="text" id="settingBakongId" placeholder="e.g. shopflow@aclb, mart@aba" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono">
+                    <span class="text-[10px] text-slate-400">Your phone/merchant ID registered with Bakong.</span>
+                  </div>
+                  <div>
+                    <label class="text-[11px] font-semibold text-slate-700 block mb-1">Merchant City *</label>
+                    <input type="text" id="settingMerchantCity" placeholder="Phnom Penh" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500">
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="text-xs font-bold text-slate-700 block mb-1">
+                  <span data-i18n="lbl_exchange_rate">Exchange Rate (1 USD to KHR)</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold text-slate-500">$1.00 USD =</span>
+                  <input type="number" id="settingExchangeRate" value="4100" class="w-32 px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 font-bold text-slate-900">
+                  <span class="text-xs font-semibold text-slate-500">KHR (៛)</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-1" data-i18n="lbl_exchange_hint">Standard market rate is usually 4,000 to 4,150 KHR per USD.</p>
+              </div>
+
+              <div>
+                <label class="text-xs font-bold text-slate-700 block mb-1" data-i18n="lbl_tax_address">Store Location / Address on Receipt</label>
+                <input type="text" id="settingShopAddress" placeholder="e.g. Street 271, Toul Tompoung, Phnom Penh" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500">
+              </div>
+            </div>
+
+            <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <button onclick="resetDefaultData()" class="text-xs text-rose-600 hover:text-rose-800 font-semibold">
+                Reset Demo Data
+              </button>
+              <button onclick="saveSettings()" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-sm transition">
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ================= DYNAMIC KHQR POPUP MODAL ================= -->
+  <div id="dynamicKhqrModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <!-- Header -->
+      <div class="bg-bakongRed p-4 text-white text-center relative">
+        <button onclick="closeKhqrModal()" class="absolute right-3.5 top-3.5 text-white/80 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-[11px] font-bold uppercase tracking-wider mb-1">
+          <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+          <span>Bakong KHQR Payment</span>
+        </div>
+        <h3 class="font-bold text-base tracking-tight" id="khqrShopTitle">SC Jewelry Mart</h3>
+        <p class="text-[11px] text-red-100" id="khqrMerchantIdDisplay">shopflow@aclb</p>
+      </div>
+
+      <!-- Currency Toggle (USD vs KHR) -->
+      <div class="p-3 bg-slate-50 border-b border-slate-100 flex items-center justify-center gap-2">
+        <button id="khqrToggleUSD" onclick="setKhqrCurrency('USD')" class="px-4 py-1 rounded-xl text-xs font-bold transition bg-brand-600 text-white shadow-xs">
+          USD ($)
+        </button>
+        <button id="khqrToggleKHR" onclick="setKhqrCurrency('KHR')" class="px-4 py-1 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200">
+          KHR (៛)
+        </button>
+      </div>
+
+      <!-- Dynamic QR Viewport -->
+      <div class="p-6 flex flex-col items-center justify-center text-center">
+        <div class="relative p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-inner inline-block">
+          <div id="khqrCanvasContainer" class="flex items-center justify-center"></div>
+          
+          <!-- Bakong Logo Overlay Badge -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-200 flex items-center justify-center p-1">
+              <div class="w-7 h-7 bg-bakongRed rounded-lg flex items-center justify-center text-white font-black text-xs">
+                KH
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Amount Due Callout -->
+        <div class="mt-4">
+          <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Amount Due</span>
+          <div class="text-2xl font-black text-slate-900" id="khqrModalAmountDisplay">$0.00</div>
+          <div class="text-xs font-bold text-emerald-600 mt-0.5" id="khqrModalAltAmountDisplay">0 ៛</div>
+        </div>
+
+        <!-- EMVCo String Preview Details -->
+        <div class="mt-3 w-full bg-slate-50 rounded-xl p-2.5 text-left border border-slate-200">
+          <div class="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+            <span>EMVCo Payload</span>
+            <button onclick="copyRawKhqrString()" class="text-sky-600 hover:underline">Copy</button>
+          </div>
+          <div class="font-mono text-[9px] text-slate-600 break-all line-clamp-2" id="khqrRawStringPreview">--</div>
+        </div>
+      </div>
+
+      <!-- Simulated Webhook / Polling & Actions -->
+      <div class="p-4 bg-slate-50 border-t border-slate-200 space-y-2">
+        <div class="flex items-center justify-between text-[11px] text-slate-500 px-1">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span>Listening for Bank Transfer...</span>
+          </span>
+          <span class="font-mono" id="khqrPollTimer">30s</span>
+        </div>
+
+        <button onclick="simulateCustomerPaymentReceived()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 active:scale-95">
+          <i data-lucide="check-check" class="w-4 h-4"></i>
+          <span>Simulate Instant Bank Transfer</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= PRINTABLE 80MM THERMAL RECEIPT ================= -->
+  <div id="receiptModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      
+      <div id="printableThermalReceipt" class="p-6 font-mono text-xs text-slate-900 space-y-3">
+        <!-- Header -->
+        <div class="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
+          <div class="w-9 h-9 bg-sky-50 text-sky-700 rounded-full flex items-center justify-center mx-auto mb-1">
+            <i data-lucide="store" class="w-4 h-4"></i>
+          </div>
+          <h4 class="font-bold text-sm tracking-tight text-slate-900" id="rcptShopTitle">SC Jewelry Shop</h4>
+          <p class="text-[11px] text-slate-500" id="rcptAddress">Phnom Penh, Cambodia</p>
+          <div class="pt-2 flex justify-between text-[10px] text-slate-500">
+            <span>Receipt: <strong id="rcptId">#0000</strong></span>
+            <span id="rcptTime">--</span>
+          </div>
+          <div class="text-[10px] text-slate-500 text-left">Cashier: <span id="rcptCashierName" class="font-semibold">Staff</span></div>
+        </div>
+
+        <!-- Line items -->
+        <div class="space-y-1.5 max-h-52 overflow-y-auto" id="rcptItemsContainer"></div>
+
+        <!-- Dual-Currency Totals -->
+        <div class="border-t border-dashed border-slate-300 pt-3 space-y-1">
+          <div class="flex justify-between font-black text-sm text-slate-900">
+            <span>TOTAL DUE:</span>
+            <div class="text-right">
+              <span id="rcptTotalUSD">$0.00</span>
+              <div class="text-[11px] text-emerald-700 font-bold" id="rcptTotalKHR">0 ៛</div>
+            </div>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-600 pt-1">
+            <span>Payment Method:</span>
+            <span id="rcptPaymentMethod" class="font-bold uppercase">CASH</span>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-600">
+            <span>Tendered:</span>
+            <span id="rcptTendered" class="font-semibold">$0.00</span>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-600">
+            <span>Change:</span>
+            <span id="rcptChange" class="font-semibold">$0.00</span>
+          </div>
+        </div>
+
+        <!-- Receipt KHQR Stamp -->
+        <div class="pt-3 border-t border-dashed border-slate-300 flex flex-col items-center justify-center text-center">
+          <div id="rcptKhqrContainer" class="p-1.5 border border-slate-200 rounded-xl bg-white mb-1"></div>
+          <span class="text-[10px] font-black text-bakongRed tracking-wider">KHQR BAKONG ACCEPTED</span>
+          <span class="text-[9px] text-slate-500" id="rcptBakongDisplay">Scan to verify or pay</span>
+        </div>
+
+        <div class="text-center text-[10px] text-slate-400 pt-1">
+          Thank you for shopping with us! • អរគុណ!
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex gap-2">
+        <button onclick="window.print()" class="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-sans text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+          <span>Print Receipt</span>
+        </button>
+        <button onclick="closeReceiptModal()" class="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-sans text-xs font-bold rounded-xl transition">
+          Done & Next
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= SUPABASE CONFIG MODAL ================= -->
+  <div id="supabaseConfigModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="database" class="w-5 h-5 text-emerald-400"></i>
+          <div>
+            <h3 class="font-bold text-sm">Supabase Multi-Tenant Connection</h3>
+            <p class="text-[11px] text-slate-400">Production PostgreSQL backend with Row Level Security</p>
+          </div>
+        </div>
+        <button onclick="closeSupabaseConfigModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs">
+        <div class="p-3.5 rounded-2xl bg-sky-50 border border-sky-200 text-sky-950 leading-relaxed">
+          <strong>Production Multi-Tenant Mode:</strong> Enter your Supabase Project URL and public <code>anon</code> key. Every sales transaction and inventory update will run through tenant-isolated Row Level Security (RLS) policies.
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Supabase Project URL</label>
+          <input type="text" id="supabaseUrlInput" placeholder="https://your-project.supabase.co" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono">
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Supabase Anon Key (Public API Key)</label>
+          <textarea id="supabaseKeyInput" rows="2" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono text-[11px]"></textarea>
+        </div>
+
+        <div class="pt-2 flex items-center justify-between">
+          <button type="button" onclick="openSchemaModal()" class="text-brand-600 hover:underline flex items-center gap-1 font-bold">
+            <i data-lucide="file-code" class="w-3.5 h-3.5"></i>
+            <span>View PostgreSQL Migration SQL</span>
+          </button>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="disconnectSupabase()" class="px-3 py-2 border border-slate-300 rounded-xl text-slate-600 hover:bg-slate-50 font-semibold">Offline Demo</button>
+            <button type="button" onclick="saveSupabaseConfig()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-sm">Save & Connect</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SQL SCHEMA & ATOMIC RPC MODAL ================= -->
+  <div id="schemaModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-3xl w-full max-w-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="database" class="w-5 h-5 text-emerald-400"></i>
+          <div>
+            <h3 class="font-bold text-sm">PostgreSQL Multi-Tenant Schema & Atomic RPC</h3>
+            <p class="text-[11px] text-slate-400">Copy this directly into Supabase SQL Editor to initialize tables, RLS policies, and stored procedures.</p>
+          </div>
+        </div>
+        <button onclick="closeSchemaModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 flex-1 overflow-y-auto bg-slate-950 font-mono text-[11px] text-emerald-400 select-all">
+        <pre id="sqlSchemaCode" class="whitespace-pre-wrap">-- ==============================================================
+-- SHOPFLOW KH: Multi-Tenant Enterprise POS Schema & Atomic RPC
+-- ==============================================================
+
+-- 1. Create Shops Table
+create table if not exists public.shops (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  address text,
+  currency text default 'USD',
+  exchange_rate numeric default 4100,
+  bakong_id text default 'shopflow@aclb',
+  merchant_city text default 'Phnom Penh',
+  created_at timestamptz default now()
+);
+
+-- 2. Profiles Table with RBAC (owner / cashier)
+create table if not exists public.profiles (
+  id uuid primary key references auth.users on delete cascade,
+  shop_id uuid references public.shops(id) on delete cascade,
+  email text,
+  role text default 'cashier' check (role in ('owner', 'cashier')),
+  created_at timestamptz default now()
+);
+
+-- 3. Products Table
+create table if not exists public.products (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops(id) on delete cascade,
+  name text not null,
+  sku text,
+  barcode text not null,
+  category text default 'General',
+  cost_price numeric default 0,
+  selling_price numeric not null,
+  stock_in_hand integer default 0,
+  opening_stock integer default 0,
+  min_stock_alert integer default 5,
+  created_at timestamptz default now()
+);
+
+-- 4. Sales Master Table
+create table if not exists public.sales (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops(id) on delete cascade,
+  receipt_code text not null,
+  cashier_id uuid references auth.users,
+  payment_method text default 'cash', -- 'cash', 'khqr'
+  total_usd numeric not null,
+  total_khr numeric not null,
+  tendered_usd numeric,
+  change_usd numeric,
+  created_at timestamptz default now()
+);
+
+-- 5. Sale Line Items Table
+create table if not exists public.sale_items (
+  id uuid primary key default gen_random_uuid(),
+  sale_id uuid not null references public.sales(id) on delete cascade,
+  product_id uuid references public.products(id),
+  product_name text not null,
+  quantity integer not null,
+  unit_price numeric not null,
+  cost_price numeric default 0,
+  line_total numeric not null
+);
+
+-- 6. Stock Movements Audit Ledger
+create table if not exists public.stock_movements (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops(id) on delete cascade,
+  product_id uuid references public.products(id),
+  movement_type text not null, -- 'sale', 'receipt', 'adjustment', 'closing'
+  quantity_change integer not null,
+  notes text,
+  created_at timestamptz default now()
+);
+
+-- 7. Daily Closing Records
+create table if not exists public.closing_records (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops(id) on delete cascade,
+  closing_date date default current_date,
+  total_revenue_usd numeric not null,
+  total_revenue_khr numeric not null,
+  total_profit_usd numeric default 0,
+  transactions_count integer default 0,
+  closed_by uuid references auth.users,
+  created_at timestamptz default now()
+);
+
+-- ==============================================================
+-- 8. Row Level Security (RLS) Isolation
+-- ==============================================================
+alter table public.shops enable row level security;
+alter table public.profiles enable row level security;
+alter table public.products enable row level security;
+alter table public.sales enable row level security;
+alter table public.sale_items enable row level security;
+alter table public.stock_movements enable row level security;
+alter table public.closing_records enable row level security;
+
+create or replace function public.current_user_shop_id()
+returns uuid language sql stable as $$
+  select shop_id from public.profiles where id = auth.uid()
+$$;
+
+create policy "Users can view their shop" on public.shops
+  for select using (id = public.current_user_shop_id());
+
+create policy "Users can view profile" on public.profiles
+  for select using (auth.uid() = id);
+
+create policy "Shop members access products" on public.products
+  for all using (shop_id = public.current_user_shop_id());
+
+create policy "Shop members access sales" on public.sales
+  for all using (shop_id = public.current_user_shop_id());
+
+create policy "Shop members access sale items" on public.sale_items
+  for all using (sale_id in (select id from public.sales where shop_id = public.current_user_shop_id()));
+
+create policy "Shop members access movements" on public.stock_movements
+  for all using (shop_id = public.current_user_shop_id());
+
+create policy "Shop members access closing" on public.closing_records
+  for all using (shop_id = public.current_user_shop_id());
+
+-- ==============================================================
+-- 9. Atomic Process Sale RPC Function (Prevents Race Conditions)
+-- ==============================================================
+create or replace function public.process_sale(
+  p_shop_id uuid,
+  p_receipt_code text,
+  p_payment_method text,
+  p_total_usd numeric,
+  p_total_khr numeric,
+  p_tendered_usd numeric,
+  p_change_usd numeric,
+  p_items jsonb
+)
+returns uuid
+language plpgsql
+security definer
+as $$
+declare
+  v_sale_id uuid;
+  v_item jsonb;
+  v_prod_id uuid;
+  v_qty int;
+  v_price numeric;
+  v_cost numeric;
+  v_name text;
+begin
+  -- Insert Master Sale Record
+  insert into public.sales (
+    shop_id, cashier_id, receipt_code, payment_method, 
+    total_usd, total_khr, tendered_usd, change_usd
+  ) values (
+    p_shop_id, auth.uid(), p_receipt_code, p_payment_method,
+    p_total_usd, p_total_khr, p_tendered_usd, p_change_usd
+  ) returning id into v_sale_id;
+
+  -- Atomic Line Items & Inventory Decrements
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    v_prod_id := (v_item->>'product_id')::uuid;
+    v_qty := (v_item->>'quantity')::int;
+    v_price := (v_item->>'unit_price')::numeric;
+    v_cost := coalesce((v_item->>'cost_price')::numeric, 0);
+    v_name := v_item->>'product_name';
+
+    insert into public.sale_items (
+      sale_id, product_id, product_name, quantity, unit_price, cost_price, line_total
+    ) values (
+      v_sale_id, v_prod_id, v_name, v_qty, v_price, v_cost, (v_qty * v_price)
+    );
+
+    update public.products
+    set stock_in_hand = greatest(0, stock_in_hand - v_qty)
+    where id = v_prod_id and shop_id = p_shop_id;
+
+    insert into public.stock_movements (
+      shop_id, product_id, movement_type, quantity_change, notes
+    ) values (
+      p_shop_id, v_prod_id, 'sale', -v_qty, 'Sale receipt #' || p_receipt_code
+    );
+  end loop;
+
+  return v_sale_id;
+end;
+$$;
+</pre>
+      </div>
+
+      <div class="p-4 border-t border-slate-200 flex justify-between items-center bg-slate-50">
+        <span class="text-xs text-slate-500 font-medium">Click copy and paste in your Supabase Project's SQL Editor.</span>
+        <button onclick="copySQLSchema()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          <span>Copy SQL to Clipboard</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ADD / EDIT PRODUCT MODAL ================= -->
+  <div id="productModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <h3 class="font-bold text-slate-900 text-sm" id="productModalTitle">Add New Product</h3>
+        <button onclick="closeProductModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <form id="productForm" onsubmit="handleProductSubmit(event)" class="p-5 space-y-4 text-xs">
+        <input type="hidden" id="prodEditId">
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1" data-i18n="form_name">Product Name *</label>
+          <input type="text" id="prodName" required placeholder="e.g. Wireless Headset v3" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_barcode">Barcode / EAN-13 *</label>
+            <div class="relative">
+              <input type="text" id="prodBarcode" required placeholder="8850000000001" class="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+              <button type="button" onclick="generateRandomBarcode()" class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-sky-600 font-bold hover:underline">Gen</button>
+            </div>
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_sku">SKU / Variant</label>
+            <input type="text" id="prodSku" placeholder="ATH-01-B" class="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_category">Category</label>
+            <select id="prodCategory" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none bg-white">
+              <option value="Electronics">Electronics</option>
+              <option value="Stationery">Stationery</option>
+              <option value="Beverages">Beverages / Cafe</option>
+              <option value="Accessories">Accessories</option>
+              <option value="Jewelry">Jewelry & Watches</option>
+              <option value="Groceries">Groceries / Mart</option>
+            </select>
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_min_stock">Low Stock Warning Alert</label>
+            <input type="number" id="prodMinStock" value="5" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_cost">Cost Price ($)</label>
+            <input type="number" step="0.01" id="prodCost" placeholder="10.00" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_retail">Selling Price ($) *</label>
+            <input type="number" step="0.01" id="prodPrice" required placeholder="20.00" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-bold text-sky-800">
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1" data-i18n="form_stock">Initial Stock *</label>
+            <input type="number" id="prodStock" required placeholder="10" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeProductModal()" class="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 hover:bg-slate-50 transition font-semibold">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-sm transition">Save Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= STOCK ADJUST MODAL ================= -->
+  <div id="stockAdjustModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <h3 class="font-bold text-slate-900 text-sm" data-i18n="modal_adjust_stock">Quick Stock Adjustment</h3>
+        <button onclick="closeAdjustModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4 text-xs">
+        <input type="hidden" id="adjustProdId">
+        <div>
+          <label class="text-slate-400 block mb-0.5">Product</label>
+          <div class="font-bold text-slate-800 text-sm" id="adjustProdName">--</div>
+          <div class="text-[11px] text-slate-500">Current in hand: <span class="font-bold text-slate-900" id="adjustCurrentStock">0</span></div>
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Adjustment Type</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 p-2 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+              <input type="radio" name="adjustType" value="add" checked class="text-sky-600">
+              <span class="font-semibold text-slate-700">+ Add Received Stock</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+              <input type="radio" name="adjustType" value="set" class="text-sky-600">
+              <span class="font-semibold text-slate-700">= Set New Total</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Quantity</label>
+          <input type="number" id="adjustQuantityInput" min="1" value="5" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none font-bold text-slate-900">
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Notes / Reason (optional)</label>
+          <input type="text" id="adjustReasonInput" placeholder="e.g. Received new shipment from supplier" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <button onclick="closeAdjustModal()" class="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 hover:bg-slate-50 transition font-semibold">Cancel</button>
+          <button onclick="confirmStockAdjustment()" class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-sm transition">Update Stock</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Box -->
+  <div id="toastBox" class="fixed bottom-5 right-5 z-50 transform transition-all duration-300 translate-y-20 opacity-0 pointer-events-none">
+    <div id="toastContent" class="flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border text-xs font-semibold bg-slate-900 text-white border-slate-800">
+      <i id="toastIcon" data-lucide="info" class="w-4 h-4 text-sky-400"></i>
+      <span id="toastMsg">Action completed</span>
+    </div>
+  </div>
+
+  <!-- ================= JAVASCRIPT LOGIC ================= -->
+  <script>
+    /* ================= DEFAULT FALLBACK MOCK DATA ================= */
+    const DEFAULT_PRODUCTS = [
+      {
+        id: "prod_1",
+        name: "Audiobio Headset v3",
+        sku: "ATH-01X-B",
+        barcode: "8850000000001",
+        category: "Electronics",
+        price: 20.00,
+        cost: 10.00,
+        stock: 10,
+        openingStock: 10,
+        soldToday: 0,
+        minStock: 5
+      },
+      {
+        id: "prod_2",
+        name: "Ice Latte (No Sugar)",
+        sku: "BEV-LATTE-02",
+        barcode: "8850000000002",
+        category: "Beverages",
+        price: 2.50,
+        cost: 1.00,
+        stock: 18,
+        openingStock: 18,
+        soldToday: 0,
+        minStock: 5
+      },
+      {
+        id: "prod_3",
+        name: "Hardcover Notebook A5",
+        sku: "ST-NB-A5",
+        barcode: "8850000000003",
+        category: "Stationery",
+        price: 3.50,
+        cost: 1.50,
+        stock: 4,
+        openingStock: 5,
+        soldToday: 1,
+        minStock: 5
+      },
+      {
+        id: "prod_4",
+        name: "Fast Charging USB-C Cable",
+        sku: "CAB-USBC-60W",
+        barcode: "8850000000004",
+        category: "Electronics",
+        price: 4.00,
+        cost: 1.80,
+        stock: 0,
+        openingStock: 3,
+        soldToday: 3,
+        minStock: 5
+      },
+      {
+        id: "prod_5",
+        name: "Silver Ring 925 Accent",
+        sku: "JWL-SR-925",
+        barcode: "8850000000005",
+        category: "Jewelry",
+        price: 45.00,
+        cost: 25.00,
+        stock: 12,
+        openingStock: 12,
+        soldToday: 0,
+        minStock: 3
+      }
+    ];
+
+    const TRANSLATIONS = {
+      en: {
+        nav_main: "RETAIL OPERATIONS",
+        nav_records: "AUDIT & SETTINGS",
+        menu_dashboard: "Dashboard",
+        menu_pos: "POS Terminal",
+        menu_inventory: "Stock Management",
+        menu_scanner: "Barcode Scanner",
+        menu_reports: "Daily Closing & Sales",
+        menu_settings: "KHQR & Shop Settings",
+        menu_schema: "SQL Migration Script",
+        btn_add_product: "New Product",
+        btn_open_pos: "Cashier POS",
+        daily_closing_title: "Daily Stock Closing",
+        last_closed_text: "Last closed:",
+        closing_desc: "Recomputes stock in hand, receipts and recorded sales.",
+        btn_run_closing: "Run Closing",
+        card_total_stock: "Total Stock",
+        card_variants: "variants active",
+        card_total_products: "Total Products",
+        card_in_catalog: "Items in inventory",
+        card_today_sales: "Today's Sales",
+        card_low_stock: "Low Stock Items",
+        card_attention_req: "Requires restocking",
+        stock_inventory_title: "Stock Inventory",
+        tab_todays_stock: "Today's Stock",
+        tab_low_stock: "Low Stock",
+        tab_out_of_stock: "Out of Stock",
+        btn_bulk_receive: "Stock Receipt",
+        th_product: "Product",
+        th_variant: "SKU / Barcode",
+        th_movement: "Stock Movement",
+        th_pricing: "Price (USD / KHR)",
+        th_status: "Status",
+        th_actions: "Actions",
+        pos_barcode_label: "Scan Barcode or Type SKU",
+        btn_camera_scan: "Camera",
+        pos_current_order: "Current Sale Order",
+        btn_clear_cart: "Clear Cart",
+        pos_subtotal: "Subtotal",
+        pos_total: "Total Due:",
+        pos_tendered: "Received",
+        pos_change: "Change:",
+        btn_complete_sale: "Complete Sale (Atomic Save)",
+        scanner_title: "Webcam Barcode Scanner",
+        scanner_subtitle: "Scan product barcodes (EAN-13, UPC-A, Code 128) using your laptop or phone camera.",
+        btn_start_camera: "Start Camera",
+        btn_stop_camera: "Stop Camera",
+        scanner_test_input: "Or Test with Barcode Simulator:",
+        btn_lookup: "Lookup Code",
+        badge_scanned: "SCANNED ITEM",
+        btn_add_to_sale: "Add to Sale",
+        reports_title: "Daily Sales & Inventory Reports",
+        reports_subtitle: "Review transaction logs, estimated gross profit, and export records for management.",
+        btn_export_csv: "Export Sales (CSV)",
+        btn_export_stock: "Export Inventory",
+        report_revenue: "Total Revenue Today",
+        report_profit: "Estimated Gross Profit",
+        report_transactions: "Transactions Completed",
+        recent_sales_title: "Recent Sales Transactions",
+        settings_title: "Shop Configuration & KHQR Setup",
+        settings_subtitle: "Configure your Cambodia shop profile, currency exchange, and official Bakong merchant details.",
+        lbl_shop_name: "Shop / Business Name",
+        lbl_exchange_rate: "Exchange Rate (1 USD to KHR)",
+        lbl_exchange_hint: "Standard market rate is usually 4,000 to 4,150 KHR per USD.",
+        lbl_tax_address: "Store Location / Address on Receipt",
+        form_name: "Product Name *",
+        form_barcode: "Barcode / EAN-13 *",
+        form_sku: "SKU / Variant",
+        form_category: "Category",
+        form_min_stock: "Low Stock Warning Alert",
+        form_cost: "Cost Price ($)",
+        form_retail: "Selling Price ($) *",
+        form_stock: "Initial Stock *",
+        modal_adjust_stock: "Quick Stock Adjustment",
+        auth_subtitle: "Cambodia Retail POS & Inventory Platform",
+        auth_btn_login: "Sign In",
+        auth_btn_register: "Register New Shop",
+        auth_shop_name: "Shop / Business Name *",
+        auth_email: "Email Address *",
+        auth_password: "Password *",
+        auth_role: "Default User Role",
+        auth_submit_login: "Log In to ShopFlow"
+      },
+      km: {
+        nav_main: "ប្រតិបត្តិការលក់រាយ",
+        nav_records: "កំណត់ត្រា និងការកំណត់",
+        menu_dashboard: "ផ្ទាំងគ្រប់គ្រង",
+        menu_pos: "ប្រព័ន្ធលក់ POS",
+        menu_inventory: "ការគ្រប់គ្រងស្តុក",
+        menu_scanner: "ម៉ាស៊ីនស្កេនបាកូដ",
+        menu_reports: "បិទបញ្ជី & ការលក់",
+        menu_settings: "ការកំណត់ KHQR & ហាង",
+        menu_schema: "កូដ SQL Migration",
+        btn_add_product: "បន្ថែមទំនិញថ្មី",
+        btn_open_pos: "ទំព័រគិតលុយ POS",
+        daily_closing_title: "ការបិទបញ្ជីស្តុកប្រចាំថ្ងៃ",
+        last_closed_text: "បិទចុងក្រោយ៖",
+        closing_desc: "គណនាឡើងវិញនូវស្តុកក្នុងដៃ បង្កាន់ដៃ និងការលក់ដែលបានកត់ត្រា។",
+        btn_run_closing: "ដំណើរការបិទបញ្ជី",
+        card_total_stock: "ស្តុកសរុប",
+        card_variants: "ប្រភេទមុខទំនិញ",
+        card_total_products: "មុខទំនិញសរុប",
+        card_in_catalog: "ទំនិញក្នុងប្រព័ន្ធ",
+        card_today_sales: "ការលក់ថ្ងៃនេះ",
+        card_low_stock: "ទំនិញជិតអស់ពីស្តុក",
+        card_attention_req: "ត្រូវការនាំចូលបន្ថែម",
+        stock_inventory_title: "បញ្ជីទំនិញក្នុងស្តុក",
+        tab_todays_stock: "ស្តុកថ្ងៃនេះ",
+        tab_low_stock: "ជិតអស់ពីស្តុក",
+        tab_out_of_stock: "អស់ពីស្តុក",
+        btn_bulk_receive: "បញ្ចូលស្តុកថ្មី",
+        th_product: "ឈ្មោះទំនិញ",
+        th_variant: "កូដទំនិញ / បាកូដ",
+        th_movement: "បម្រែបម្រួលស្តុក",
+        th_pricing: "តម្លៃ (USD / KHR)",
+        th_status: "ស្ថានភាព",
+        th_actions: "សកម្មភាព",
+        pos_barcode_label: "ស្កេនបាកូដ ឬ វាយលេខកូដទំនិញ",
+        btn_camera_scan: "កាមេរ៉ា",
+        pos_current_order: "ការបញ្ជាទិញបច្ចុប្បន្ន",
+        btn_clear_cart: "សម្អាតកន្ត្រក",
+        pos_subtotal: "សរុបរង",
+        pos_total: "សរុបត្រូវទូទាត់:",
+        pos_tendered: "ប្រាក់ទទួលបាន",
+        pos_change: "ប្រាក់អាប់:",
+        btn_complete_sale: "បញ្ចប់ការលក់ (កត់ត្រាចូលប្រព័ន្ធ)",
+        scanner_title: "ម៉ាស៊ីនស្កេនបាកូដកាមេរ៉ា",
+        scanner_subtitle: "ស្កេនបាកូដទំនិញ (EAN-13, UPC-A, Code 128) តាមកាមេរ៉ាកុំព្យូទ័រ ឬទូរស័ព្ទ។",
+        btn_start_camera: "បើកកាមេរ៉ា",
+        btn_stop_camera: "បិទកាមេរ៉ា",
+        scanner_test_input: "ឬ សាកល្បងវាយលេខកូដបាកូដ៖",
+        btn_lookup: "ស្វែងរក",
+        badge_scanned: "ទំនិញដែលស្កេនបាន",
+        btn_add_to_sale: "បញ្ចូលទៅការលក់",
+        reports_title: "របាយការណ៍លក់ និងស្តុកប្រចាំថ្ងៃ",
+        reports_subtitle: "ពិនិត្យមើលប្រតិបត្តិការ ប្រាក់ចំណេញដុល និងទាញយកទិន្នន័យ។",
+        btn_export_csv: "ទាញយករបាយការណ៍លក់ (CSV)",
+        btn_export_stock: "ទាញយករបាយការណ៍ស្តុក",
+        report_revenue: "ចំណូលសរុបថ្ងៃនេះ",
+        report_profit: "ចំណេញដុលប៉ាន់ស្មាន",
+        report_transactions: "ចំនួនវិក្កយបត្របានលក់",
+        recent_sales_title: "កំណត់ត្រាការលក់ថ្មីៗ",
+        settings_title: "ការកំណត់ហាង & KHQR បាគង",
+        settings_subtitle: "កំណត់ព័ត៌មានហាង អត្រាប្តូរប្រាក់ និងគណនីបាគងផ្លូវការនៅកម្ពុជា។",
+        lbl_shop_name: "ឈ្មោះហាង / អាជីវកម្ម",
+        lbl_exchange_rate: "អត្រាប្តូរប្រាក់ (1 USD ទៅ KHR)",
+        lbl_exchange_hint: "អត្រាទីផ្សារទូទៅនៅកម្ពុជាគឺចន្លោះ 4,000 ដល់ 4,150 រៀល ក្នុង 1 ដុល្លារ។",
+        lbl_tax_address: "អាសយដ្ឋានហាង / ចំណាំលើវិក្កយបត្រ",
+        form_name: "ឈ្មោះទំនិញ *",
+        form_barcode: "លេខបាកូដ / EAN-13 *",
+        form_sku: "លេខកូដសំគាល់ SKU",
+        form_category: "ប្រភេទ",
+        form_min_stock: "កម្រិតកំណត់ប្រកាសអាសន្នជិតអស់",
+        form_cost: "ថ្លៃដើម ($)",
+        form_retail: "តម្លៃលក់ ($) *",
+        form_stock: "ចំនួនស្តុកដំបូង *",
+        modal_adjust_stock: "កែតម្រូវស្តុកទំនិញរហ័ស",
+        auth_subtitle: "ប្រព័ន្ធគ្រប់គ្រងស្តុក និងការលក់រាយនៅកម្ពុជា",
+        auth_btn_login: "ចូលប្រើប្រព័ន្ធ",
+        auth_btn_register: "ចុះឈ្មោះហាងថ្មី",
+        auth_shop_name: "ឈ្មោះហាង / អាជីវកម្ម *",
+        auth_email: "អ៊ីមែល *",
+        auth_password: "ពាក្យសម្ងាត់ *",
+        auth_role: "តួនាទីគណនី",
+        auth_submit_login: "ចូលទៅកាន់ ShopFlow"
+      }
+    };
+
+    /* ================= GLOBAL STATE ================= */
+    let appState = {
+      language: 'en',
+      activeTab: 'dashboard',
+      stockFilter: 'all',
+      selectedPosCategory: 'All',
+      paymentMethod: 'cash',
+      exchangeRate: 4100,
+      khqrCurrency: 'USD',
+      currentKhqrString: '',
+      shopProfile: {
+        id: "shop_kh_demo_01",
+        name: "SC Jewelry & Daily Mart",
+        address: "St. 271, Toul Tompoung, Phnom Penh, Cambodia",
+        bakongId: "shopflow@aclb",
+        merchantCity: "Phnom Penh"
+      },
+      currentUser: {
+        id: "user_owner_demo",
+        email: "owner@shopflow.kh",
+        role: "owner" // 'owner' or 'cashier'
+      },
+      supabaseConfig: {
+        url: "",
+        anonKey: "",
+        connected: false
+      },
+      lastClosed: new Date().toLocaleDateString('en-GB'),
+      products: [],
+      sales: [],
+      movements: [],
+      cart: [],
+      lastScannedProduct: null,
+      authMode: 'login',
+      khqrPollingInterval: null
+    };
+
+    let supabaseClient = null;
+    let html5QrScanner = null;
+    let barcodeScannerBuffer = "";
+    let barcodeScannerLastKeyTime = 0;
+
+    /* ================= OFFICIAL EMVCo KHQR & CRC16 CCITT ENGINE ================= */
+    /**
+     * Implements standard Tag-Length-Value (TLV) generator according to NBC KHQR standard.
+     */
+    function formatTlv(tag, value) {
+      if (value === undefined || value === null) return '';
+      const strVal = String(value);
+      const len = strVal.length.toString().padStart(2, '0');
+      return `${tag}${len}${strVal}`;
+    }
+
+    /**
+     * Computes the CRC-16 (CCITT 0xFFFF) Checksum required by EMVCo standards.
+     * Polynomial: 0x1021, Initial: 0xFFFF
+     */
+    function computeCrc16(str) {
+      let crc = 0xFFFF;
+      for (let i = 0; i < str.length; i++) {
+        crc ^= (str.charCodeAt(i) << 8);
+        for (let j = 0; j < 8; j++) {
+          if ((crc & 0x8000) !== 0) {
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+          } else {
+            crc = (crc << 1) & 0xFFFF;
+          }
+        }
+      }
+      return crc.toString(16).toUpperCase().padStart(4, '0');
+    }
+
+    /**
+     * Generates a fully-compliant dynamic KHQR payload string.
+     * @param {string} bakongId - Merchant Bakong Account (e.g. name@aclb)
+     * @param {string} merchantName - Business/Mart Name
+     * @param {string} merchantCity - City (Phnom Penh)
+     * @param {number} amount - Total amount
+     * @param {string} currency - 'USD' or 'KHR'
+     * @param {string} billNumber - Receipt Code reference
+     */
+    function generateKhqrPayload(bakongId, merchantName, merchantCity, amount, currency, billNumber) {
+      const isUsd = (currency || 'USD') === 'USD';
+      const currencyCode = isUsd ? '840' : '116';
+      const formattedAmount = isUsd ? Number(amount).toFixed(2) : Math.round(Number(amount)).toString();
+
+      // Tag 00: Payload Format Indicator ("01")
+      let payload = formatTlv('00', '01');
+
+      // Tag 01: Point of Initiation Method ("12" = Dynamic with amount, "11" = Static)
+      payload += formatTlv('01', '12');
+
+      // Tag 29 / 30: Merchant Account Information
+      // Tag 29: Bakong sub-tags: Tag 00: Bakong identifier, Tag 01: Account ID
+      const merchantSubData = formatTlv('00', 'bakong@nbc') + formatTlv('01', bakongId);
+      payload += formatTlv('29', merchantSubData);
+
+      // Tag 52: Merchant Category Code ("5411" Grocery / Mart)
+      payload += formatTlv('52', '5411');
+
+      // Tag 53: Transaction Currency (840 for USD, 116 for KHR)
+      payload += formatTlv('53', currencyCode);
+
+      // Tag 54: Transaction Amount
+      payload += formatTlv('54', formattedAmount);
+
+      // Tag 58: Country Code ("KH")
+      payload += formatTlv('58', 'KH');
+
+      // Tag 59: Merchant Name
+      const cleanName = (merchantName || 'Retail Mart').replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 25);
+      payload += formatTlv('59', cleanName);
+
+      // Tag 60: Merchant City
+      const cleanCity = (merchantCity || 'Phnom Penh').replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 15);
+      payload += formatTlv('60', cleanCity);
+
+      // Tag 62: Additional Data Field (Reference Bill Number)
+      if (billNumber) {
+        const addData = formatTlv('01', billNumber.slice(0, 20));
+        payload += formatTlv('62', addData);
+      }
+
+      // Tag 63: CRC Checksum preamble
+      payload += '6304';
+      const crcHex = computeCrc16(payload);
+      return payload + crcHex;
+    }
+
+    /* ================= INITIALIZATION & LIFECYCLE ================= */
+    window.onload = function() {
+      loadSavedConfig();
+      initDate();
+      applyLanguage();
+      initSupabaseIfConfigured();
+      renderAll();
+      enforceRolePermissions();
+      setupPhysicalBarcodeScannerListener();
+      lucide.createIcons();
+    };
+
+    function initDate() {
+      const now = new Date();
+      const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+      document.getElementById('currentDateStr').innerText = now.toLocaleDateString(appState.language === 'km' ? 'km-KH' : 'en-US', options);
+    }
+
+    function loadSavedConfig() {
+      try {
+        const savedLang = localStorage.getItem('shopflow_lang');
+        if (savedLang) appState.language = savedLang;
+
+        const savedRate = localStorage.getItem('shopflow_rate');
+        if (savedRate) appState.exchangeRate = parseFloat(savedRate) || 4100;
+
+        const savedShop = localStorage.getItem('shopflow_shop');
+        if (savedShop) appState.shopProfile = JSON.parse(savedShop);
+
+        const savedUser = localStorage.getItem('shopflow_user');
+        if (savedUser) appState.currentUser = JSON.parse(savedUser);
+
+        const sbUrl = localStorage.getItem('shopflow_sb_url');
+        const sbKey = localStorage.getItem('shopflow_sb_key');
+        if (sbUrl && sbKey) {
+          appState.supabaseConfig.url = sbUrl;
+          appState.supabaseConfig.anonKey = sbKey;
+        }
+
+        const savedProducts = localStorage.getItem('shopflow_products');
+        if (savedProducts) {
+          appState.products = JSON.parse(savedProducts);
+        } else {
+          appState.products = DEFAULT_PRODUCTS;
+          saveProducts();
+        }
+
+        const savedSales = localStorage.getItem('shopflow_sales');
+        if (savedSales) {
+          appState.sales = JSON.parse(savedSales);
+        } else {
+          appState.sales = [
+            {
+              id: "REC-9021",
+              timestamp: new Date(Date.now() - 3600000).toISOString(),
+              paymentMethod: "cash",
+              items: [
+                { id: "prod_3", name: "Hardcover Notebook A5", qty: 1, price: 3.50, cost: 1.50 }
+              ],
+              totalUSD: 3.50,
+              totalKHR: 3.50 * appState.exchangeRate,
+              tenderedUSD: 5.00,
+              changeUSD: 1.50
+            }
+          ];
+          saveSales();
+        }
+
+        const savedMoves = localStorage.getItem('shopflow_movements');
+        if (savedMoves) {
+          appState.movements = JSON.parse(savedMoves);
+        } else {
+          appState.movements = [
+            {
+              id: "m_1",
+              productName: "Hardcover Notebook A5",
+              type: "sale",
+              quantityChange: -1,
+              notes: "Sale receipt #REC-9021",
+              timestamp: new Date(Date.now() - 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          ];
+          saveMovements();
+        }
+
+        const savedClosed = localStorage.getItem('shopflow_lastclosed');
+        if (savedClosed) appState.lastClosed = savedClosed;
+
+      } catch (err) {
+        console.warn("Storage recovery error:", err);
+      }
+    }
+
+    function saveProducts() {
+      localStorage.setItem('shopflow_products', JSON.stringify(appState.products));
+    }
+
+    function saveSales() {
+      localStorage.setItem('shopflow_sales', JSON.stringify(appState.sales));
+    }
+
+    function saveMovements() {
+      localStorage.setItem('shopflow_movements', JSON.stringify(appState.movements));
+    }
+
+    /* ================= PHYSICAL USB / BLUETOOTH BARCODE SCANNER LISTENER ================= */
+    function setupPhysicalBarcodeScannerListener() {
+      window.addEventListener('keydown', (e) => {
+        // Ignore if user is currently typing in an input or textarea
+        const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+        if (activeTag === 'input' || activeTag === 'textarea') {
+          return;
+        }
+
+        const currentTime = Date.now();
+        // Hardware scanners output characters with very low latency (< 35ms)
+        if (currentTime - barcodeScannerLastKeyTime > 100) {
+          barcodeScannerBuffer = "";
+        }
+        barcodeScannerLastKeyTime = currentTime;
+
+        if (e.key === 'Enter') {
+          if (barcodeScannerBuffer.length >= 3) {
+            handleHardwareBarcodeScanned(barcodeScannerBuffer.trim());
+            barcodeScannerBuffer = "";
+          }
+        } else if (e.key.length === 1) {
+          barcodeScannerBuffer += e.key;
+        }
+      });
+    }
+
+    function handleHardwareBarcodeScanned(barcode) {
+      const prod = appState.products.find(p => p.barcode === barcode || (p.sku && p.sku.toLowerCase() === barcode.toLowerCase()));
+      if (prod) {
+        addToCart(prod.id);
+        playBeep(880, 80);
+        showToast(`Barcode Scanned: ${prod.name}`, 'check');
+      } else {
+        playBeep(220, 150);
+        showToast(`Unknown Barcode: ${barcode}`, 'alert-circle');
+      }
+    }
+
+    /* Sound Effects Generator via Web Audio API */
+    function playBeep(freq = 880, durationMs = 100) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durationMs / 1000);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + durationMs / 1000);
+      } catch (e) {
+        // AudioContext restricted before gesture
+      }
+    }
+
+    /* ================= SUPABASE CLIENT INTEGRATION ================= */
+    function initSupabaseIfConfigured() {
+      if (appState.supabaseConfig.url && appState.supabaseConfig.anonKey && window.supabase) {
+        try {
+          supabaseClient = window.supabase.createClient(
+            appState.supabaseConfig.url, 
+            appState.supabaseConfig.anonKey
+          );
+          appState.supabaseConfig.connected = true;
+          updateDbStatusBadge(true);
+          fetchRemoteOrLocalData();
+        } catch (e) {
+          console.error("Supabase connection error:", e);
+          appState.supabaseConfig.connected = false;
+          updateDbStatusBadge(false);
+        }
+      } else {
+        updateDbStatusBadge(false);
+      }
+    }
+
+    function updateDbStatusBadge(isConnected) {
+      const dot = document.getElementById('dbStatusDot');
+      const badge = document.getElementById('dbStatusBadge');
+      if (isConnected) {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+        badge.title = "Supabase Connected (Live PostgreSQL Mode)";
+      } else {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-amber-400";
+        badge.title = "Local / Mock Mode (Click to connect Supabase)";
+      }
+    }
+
+    async function fetchRemoteOrLocalData() {
+      if (!supabaseClient || !appState.supabaseConfig.connected) {
+        renderAll();
+        return;
+      }
+
+      showToast("Syncing with Supabase Cloud...", "refresh-cw");
+      try {
+        const { data: prods, error: pErr } = await supabaseClient
+          .from('products')
+          .select('*')
+          .eq('shop_id', appState.shopProfile.id);
+
+        if (!pErr && prods && prods.length > 0) {
+          appState.products = prods.map(p => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku,
+            barcode: p.barcode,
+            category: p.category,
+            price: Number(p.selling_price),
+            cost: Number(p.cost_price),
+            stock: Number(p.stock_in_hand),
+            openingStock: Number(p.opening_stock || p.stock_in_hand),
+            minStock: Number(p.min_stock_alert || 5)
+          }));
+          saveProducts();
+        }
+
+        const { data: salesData, error: sErr } = await supabaseClient
+          .from('sales')
+          .select('*, sale_items(*)')
+          .eq('shop_id', appState.shopProfile.id)
+          .order('created_at', { ascending: false });
+
+        if (!sErr && salesData && salesData.length > 0) {
+          appState.sales = salesData.map(s => ({
+            id: s.receipt_code,
+            timestamp: s.created_at,
+            paymentMethod: s.payment_method || 'cash',
+            totalUSD: Number(s.total_usd),
+            totalKHR: Number(s.total_khr),
+            tenderedUSD: Number(s.tendered_usd),
+            changeUSD: Number(s.change_usd),
+            items: (s.sale_items || []).map(i => ({
+              id: i.product_id,
+              name: i.product_name,
+              qty: i.quantity,
+              price: Number(i.unit_price),
+              cost: Number(i.cost_price || 0)
+            }))
+          }));
+          saveSales();
+        }
+
+        showToast("Synchronized with cloud database", "check");
+      } catch (err) {
+        console.warn("Cloud fallback to local:", err);
+      }
+      renderAll();
+    }
+
+    function openSupabaseConfigModal() {
+      document.getElementById('supabaseUrlInput').value = appState.supabaseConfig.url || '';
+      document.getElementById('supabaseKeyInput').value = appState.supabaseConfig.anonKey || '';
+      document.getElementById('supabaseConfigModal').classList.remove('hidden');
+    }
+
+    function closeSupabaseConfigModal() {
+      document.getElementById('supabaseConfigModal').classList.add('hidden');
+    }
+
+    function saveSupabaseConfig() {
+      const url = document.getElementById('supabaseUrlInput').value.trim();
+      const key = document.getElementById('supabaseKeyInput').value.trim();
+
+      if (!url || !key) {
+        showToast("Please provide both URL and Anon Key", "alert-circle");
+        return;
+      }
+
+      appState.supabaseConfig.url = url;
+      appState.supabaseConfig.anonKey = key;
+      localStorage.setItem('shopflow_sb_url', url);
+      localStorage.setItem('shopflow_sb_key', key);
+
+      initSupabaseIfConfigured();
+      closeSupabaseConfigModal();
+      showToast("Supabase configuration saved!", "check");
+    }
+
+    function disconnectSupabase() {
+      appState.supabaseConfig.url = "";
+      appState.supabaseConfig.anonKey = "";
+      appState.supabaseConfig.connected = false;
+      localStorage.removeItem('shopflow_sb_url');
+      localStorage.removeItem('shopflow_sb_key');
+      supabaseClient = null;
+      updateDbStatusBadge(false);
+      closeSupabaseConfigModal();
+      showToast("Switched to Local Demo Mode", "info");
+    }
+
+    function openSchemaModal() {
+      document.getElementById('schemaModal').classList.remove('hidden');
+    }
+
+    function closeSchemaModal() {
+      document.getElementById('schemaModal').classList.add('hidden');
+    }
+
+    function copySQLSchema() {
+      const text = document.getElementById('sqlSchemaCode').innerText;
+      const el = document.createElement('textarea');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      showToast("SQL Schema copied to clipboard!", "check");
+    }
+
+    /* ================= AUTHENTICATION & ROLES ================= */
+    function switchAuthMode(mode) {
+      appState.authMode = mode;
+      const isLogin = mode === 'login';
+      document.getElementById('authTabLogin').className = isLogin 
+        ? "flex-1 py-3 text-center border-b-2 border-brand-600 text-brand-600 transition" 
+        : "flex-1 py-3 text-center text-slate-400 hover:text-slate-600 transition";
+      document.getElementById('authTabSignup').className = !isLogin 
+        ? "flex-1 py-3 text-center border-b-2 border-brand-600 text-brand-600 transition" 
+        : "flex-1 py-3 text-center text-slate-400 hover:text-slate-600 transition";
+
+      document.getElementById('authShopNameField').classList.toggle('hidden', isLogin);
+      document.getElementById('authSubmitText').innerText = isLogin ? "Log In to ShopFlow" : "Create Shop & Account";
+    }
+
+    async function handleAuthSubmit(e) {
+      e.preventDefault();
+      const email = document.getElementById('authEmailInput').value.trim();
+      const password = document.getElementById('authPasswordInput').value;
+      const shopName = document.getElementById('authShopNameInput').value.trim() || 'My Cambodian Shop';
+      const role = document.querySelector('input[name="authRole"]:checked')?.value || 'cashier';
+
+      if (supabaseClient && appState.supabaseConfig.connected) {
+        showToast("Authenticating with Supabase...", "refresh-cw");
+        if (appState.authMode === 'login') {
+          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) {
+            showToast("Login error: " + error.message, "alert-circle");
+            return;
+          }
+          const { data: profile } = await supabaseClient
+            .from('profiles')
+            .select('*, shops(*)')
+            .eq('id', data.user.id)
+            .single();
+
+          if (profile) {
+            appState.currentUser = { id: profile.id, email: profile.email, role: profile.role };
+            if (profile.shops) {
+              appState.shopProfile.id = profile.shops.id;
+              appState.shopProfile.name = profile.shops.name;
+              appState.shopProfile.address = profile.shops.address || appState.shopProfile.address;
+              appState.shopProfile.bakongId = profile.shops.bakong_id || appState.shopProfile.bakongId;
+            }
+          } else {
+            appState.currentUser = { id: data.user.id, email: data.user.email, role };
+          }
+        } else {
+          const { data, error } = await supabaseClient.auth.signUp({ email, password });
+          if (error) {
+            showToast("Signup error: " + error.message, "alert-circle");
+            return;
+          }
+          const newShopId = crypto.randomUUID ? crypto.randomUUID() : ('shop_' + Date.now());
+          appState.shopProfile.id = newShopId;
+          appState.shopProfile.name = shopName;
+          appState.currentUser = { id: data.user?.id || 'uid_' + Date.now(), email, role: 'owner' };
+        }
+      } else {
+        appState.currentUser = { id: "user_" + Date.now(), email, role };
+        if (appState.authMode === 'signup') {
+          appState.shopProfile.name = shopName;
+          appState.shopProfile.id = "shop_" + Date.now();
+        }
+      }
+
+      localStorage.setItem('shopflow_user', JSON.stringify(appState.currentUser));
+      localStorage.setItem('shopflow_shop', JSON.stringify(appState.shopProfile));
+
+      document.getElementById('authScreen').classList.add('hidden');
+      renderAll();
+      enforceRolePermissions();
+      showToast(`Logged in as ${appState.currentUser.role.toUpperCase()}`, "check");
+    }
+
+    function continueDemoMode(role) {
+      appState.currentUser = {
+        id: role === 'owner' ? "owner_demo" : "cashier_demo",
+        email: role === 'owner' ? "owner@shopflow.kh" : "cashier@shopflow.kh",
+        role: role
+      };
+      localStorage.setItem('shopflow_user', JSON.stringify(appState.currentUser));
+      document.getElementById('authScreen').classList.add('hidden');
+      renderAll();
+      enforceRolePermissions();
+      showToast(`Switched session to ${role.toUpperCase()}`, "check");
+    }
+
+    function handleSignOut() {
+      if (supabaseClient) {
+        supabaseClient.auth.signOut().catch(err => console.log(err));
+      }
+      document.getElementById('authScreen').classList.remove('hidden');
+    }
+
+    function enforceRolePermissions() {
+      const isOwner = appState.currentUser.role === 'owner';
+      const headerAddProd = document.getElementById('headerBtnAddProduct');
+      const btnClosing = document.getElementById('btnRunClosing');
+      const kpiProfit = document.getElementById('kpiProfitCard');
+      const sideRoleTag = document.getElementById('sideUserRoleTag');
+
+      if (sideRoleTag) {
+        sideRoleTag.innerText = isOwner ? 'Owner' : 'Cashier';
+        sideRoleTag.className = isOwner ? 'text-amber-400 font-bold' : 'text-emerald-400 font-semibold';
+      }
+
+      if (headerAddProd) headerAddProd.classList.toggle('hidden', !isOwner);
+      if (btnClosing) btnClosing.classList.toggle('hidden', !isOwner);
+      if (kpiProfit) kpiProfit.classList.toggle('hidden', !isOwner);
+
+      renderInventoryTable();
+    }
+
+    /* ================= CURRENCY & FORMATTING ================= */
+    function formatUSD(amount) {
+      return '$' + Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatKHR(amountUSD) {
+      const khr = Math.round(Number(amountUSD || 0) * appState.exchangeRate);
+      return khr.toLocaleString('en-US') + ' ៛';
+    }
+
+    /* ================= NAVIGATION ================= */
+    function navigateTo(viewId) {
+      if (appState.activeTab === 'scanner' && viewId !== 'scanner') {
+        stopScanner();
+      }
+
+      appState.activeTab = viewId;
+      document.querySelectorAll('.view-panel').forEach(el => el.classList.add('hidden'));
+      const activePanel = document.getElementById('view-' + viewId);
+      if (activePanel) activePanel.classList.remove('hidden');
+
+      document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.classList.remove('bg-brand-600', 'text-white', 'shadow-sm');
+        btn.classList.add('text-slate-300');
+      });
+
+      const activeNavBtn = document.getElementById('nav-' + viewId);
+      if (activeNavBtn) {
+        activeNavBtn.classList.remove('text-slate-300');
+        activeNavBtn.classList.add('bg-brand-600', 'text-white', 'shadow-sm');
+      }
+
+      const titleMap = {
+        dashboard: appState.language === 'km' ? 'ផ្ទាំងគ្រប់គ្រង (Dashboard)' : 'Stock Management & Dashboard',
+        pos: appState.language === 'km' ? 'ប្រព័ន្ធគិតលុយ (POS Terminal)' : 'POS Terminal & Cashier',
+        inventory: appState.language === 'km' ? 'ការគ្រប់គ្រងស្តុក (Stock Inventory)' : 'Stock Inventory Management',
+        scanner: appState.language === 'km' ? 'ម៉ាស៊ីនស្កេនបាកូដ (Barcode Scanner)' : 'Live Barcode Scanner',
+        reports: appState.language === 'km' ? 'របាយការណ៍ និងបិទបញ្ជី (Closing & Reports)' : 'Daily Closing & Sales Reports',
+        settings: appState.language === 'km' ? 'ការកំណត់ (Settings)' : 'KHQR & Shop Settings'
+      };
+      document.getElementById('pageTitle').innerText = titleMap[viewId] || 'ShopFlow KH';
+
+      if (viewId === 'inventory' || viewId === 'dashboard') {
+        renderInventoryTable();
+      } else if (viewId === 'pos') {
+        renderPosProducts();
+        renderCart();
+      } else if (viewId === 'reports') {
+        renderReports();
+      } else if (viewId === 'settings') {
+        loadSettingsInputs();
+      }
+
+      lucide.createIcons();
+    }
+
+    /* ================= LOCALIZATION ================= */
+    function setLanguage(lang) {
+      appState.language = lang;
+      localStorage.setItem('shopflow_lang', lang);
+      applyLanguage();
+      renderAll();
+    }
+
+    function applyLanguage() {
+      const isKm = appState.language === 'km';
+      document.getElementById('lang-en').className = !isKm ? 'flex-1 py-1 px-2 rounded-lg font-medium text-center transition bg-brand-600 text-white' : 'flex-1 py-1 px-2 rounded-lg font-medium text-center transition text-slate-400 hover:text-white';
+      document.getElementById('lang-km').className = isKm ? 'flex-1 py-1 px-2 rounded-lg font-medium text-center transition bg-brand-600 text-white' : 'flex-1 py-1 px-2 rounded-lg font-medium text-center transition text-slate-400 hover:text-white';
+
+      const strings = TRANSLATIONS[appState.language];
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (strings[key]) {
+          el.innerText = strings[key];
+        }
+      });
+
+      initDate();
+    }
+
+    /* ================= RENDER ALL ================= */
+    function renderAll() {
+      document.getElementById('sideShopName').innerText = appState.shopProfile.name;
+      document.getElementById('sideUserEmail').innerText = appState.currentUser.email || 'user';
+      document.getElementById('sideShopIdBadge').innerText = appState.shopProfile.id ? String(appState.shopProfile.id).slice(0, 10) : 'demo';
+      document.getElementById('userAvatarText').innerText = (appState.currentUser.email || 'U')[0].toUpperCase();
+      document.getElementById('navExchangeRate').innerText = appState.exchangeRate.toLocaleString();
+      document.getElementById('lastClosedLabel').innerText = appState.lastClosed;
+
+      updateMetricCards();
+      renderInventoryTable();
+      renderPosProducts();
+      renderCart();
+      renderReports();
+      loadSettingsInputs();
+      lucide.createIcons();
+    }
+
+    function updateMetricCards() {
+      const totalStock = appState.products.reduce((acc, p) => acc + (parseInt(p.stock) || 0), 0);
+      const totalVariants = appState.products.length;
+
+      const lowStockItems = appState.products.filter(p => p.stock > 0 && p.stock <= (p.minStock || 5));
+      const outOfStockItems = appState.products.filter(p => p.stock <= 0);
+      const todayRevUSD = appState.sales.reduce((acc, s) => acc + (parseFloat(s.totalUSD) || 0), 0);
+
+      document.getElementById('metricTotalStock').innerText = totalStock.toLocaleString();
+      document.getElementById('metricVariantsCount').innerText = totalVariants;
+      document.getElementById('metricTotalProducts').innerText = totalVariants;
+      document.getElementById('metricTodaySalesUSD').innerText = formatUSD(todayRevUSD);
+      document.getElementById('metricTodaySalesKHR').innerText = formatKHR(todayRevUSD);
+      document.getElementById('metricLowStockCount').innerText = lowStockItems.length;
+      document.getElementById('metricOutOfStockCount').innerText = `${outOfStockItems.length} out of stock`;
+
+      const badge = document.getElementById('lowStockBadge');
+      const urgentCount = lowStockItems.length + outOfStockItems.length;
+      if (urgentCount > 0) {
+        badge.classList.remove('hidden');
+        badge.innerText = urgentCount;
+      } else {
+        badge.classList.add('hidden');
+      }
+
+      document.getElementById('tabCountAll').innerText = totalVariants;
+      document.getElementById('tabCountLow').innerText = lowStockItems.length;
+      document.getElementById('tabCountOut').innerText = outOfStockItems.length;
+    }
+
+    /* ================= STOCK INVENTORY TABLE ================= */
+    function setStockFilter(filter) {
+      appState.stockFilter = filter;
+      document.querySelectorAll('.stock-tab-btn').forEach(btn => {
+        btn.classList.remove('bg-white', 'shadow-xs', 'text-brand-700', 'font-semibold');
+        btn.classList.add('text-slate-600');
+      });
+      const activeBtn = document.getElementById('tab-' + filter);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-white', 'shadow-xs', 'text-brand-700', 'font-semibold');
+        activeBtn.classList.remove('text-slate-600');
+      }
+      renderInventoryTable();
+    }
+
+    function renderInventoryTable() {
+      const tbody = document.getElementById('inventoryTableBody');
+      const searchVal = (document.getElementById('inventorySearchInput')?.value || '').toLowerCase().trim();
+      const isOwner = appState.currentUser.role === 'owner';
+
+      let filtered = appState.products.filter(p => {
+        const matchesSearch = p.name.toLowerCase().includes(searchVal) ||
+                              (p.sku && p.sku.toLowerCase().includes(searchVal)) ||
+                              p.barcode.toLowerCase().includes(searchVal) ||
+                              p.category.toLowerCase().includes(searchVal);
+        if (!matchesSearch) return false;
+
+        if (appState.stockFilter === 'low') {
+          return p.stock > 0 && p.stock <= (p.minStock || 5);
+        } else if (appState.stockFilter === 'out') {
+          return p.stock <= 0;
+        }
+        return true;
+      });
+
+      document.getElementById('stockShowingCount').innerText = `Showing ${filtered.length} of ${appState.products.length} stock items`;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="text-center py-12 text-slate-400">
+              <i data-lucide="package-search" class="w-8 h-8 mx-auto mb-2 stroke-[1.5]"></i>
+              <p>No inventory items match your criteria.</p>
+            </td>
+          </tr>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(prod => {
+        const isOutOfStock = prod.stock <= 0;
+        const isLow = prod.stock > 0 && prod.stock <= (prod.minStock || 5);
+
+        let statusBadge = `
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> In Stock (${prod.stock})
+          </span>
+        `;
+        if (isOutOfStock) {
+          statusBadge = `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Out of Stock
+            </span>
+          `;
+        } else if (isLow) {
+          statusBadge = `
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Low Stock (${prod.stock})
+            </span>
+          `;
+        }
+
+        const opening = prod.openingStock !== undefined ? prod.openingStock : prod.stock;
+        const inHand = prod.stock;
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors">
+            <td class="py-3 px-4">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-2xl bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-xs uppercase border border-slate-200">
+                  ${prod.name.substring(0, 2)}
+                </div>
+                <div>
+                  <div class="font-bold text-slate-900">${prod.name}</div>
+                  <div class="text-[11px] text-slate-400 font-medium">${prod.category}</div>
+                </div>
+              </div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="font-mono text-slate-800 font-semibold">${prod.sku || '--'}</div>
+              <div class="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+                <i data-lucide="barcode" class="w-3 h-3 text-slate-400"></i> ${prod.barcode}
+              </div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="text-[11px] space-y-0.5 text-slate-500">
+                <div class="flex items-center justify-between w-28"><span>• Opening:</span> <span class="font-semibold text-slate-700">${opening}</span></div>
+                <div class="flex items-center justify-between w-28 text-sky-800 font-bold"><span>• In Hand:</span> <span>${inHand}</span></div>
+              </div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="font-bold text-slate-900">${formatUSD(prod.price)}</div>
+              <div class="text-[11px] font-semibold text-emerald-600">${formatKHR(prod.price)}</div>
+              ${isOwner ? `<div class="text-[10px] text-slate-400">Cost: ${formatUSD(prod.cost || 0)}</div>` : ''}
+            </td>
+            <td class="py-3 px-4 text-center">
+              ${statusBadge}
+            </td>
+            <td class="py-3 px-4 text-right">
+              <div class="flex items-center justify-end gap-1.5">
+                <button onclick="openAdjustModalFor('${prod.id}')" title="Receive / Adjust Stock" class="p-1.5 rounded-xl bg-slate-100 hover:bg-sky-50 hover:text-sky-600 text-slate-600 transition">
+                  <i data-lucide="plus-minus" class="w-4 h-4"></i>
+                </button>
+                ${isOwner ? `
+                  <button onclick="openEditProductModal('${prod.id}')" title="Edit Product" class="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition">
+                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="deleteProduct('${prod.id}')" title="Delete Product" class="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  </button>
+                ` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    /* ================= PRODUCT CRUD ================= */
+    function openAddProductModal() {
+      if (appState.currentUser.role !== 'owner') {
+        showToast("Access Denied: Only Shop Owners can add products", "alert-triangle");
+        return;
+      }
+      document.getElementById('prodEditId').value = '';
+      document.getElementById('productForm').reset();
+      document.getElementById('productModalTitle').innerText = appState.language === 'km' ? 'បន្ថែមទំនិញថ្មី (Add New Product)' : 'Add New Product';
+      document.getElementById('prodMinStock').value = 5;
+      document.getElementById('productModal').classList.remove('hidden');
+    }
+
+    function openEditProductModal(id) {
+      if (appState.currentUser.role !== 'owner') {
+        showToast("Access Denied: Only Shop Owners can edit products", "alert-triangle");
+        return;
+      }
+      const prod = appState.products.find(p => p.id === id);
+      if (!prod) return;
+
+      document.getElementById('prodEditId').value = prod.id;
+      document.getElementById('prodName').value = prod.name;
+      document.getElementById('prodBarcode').value = prod.barcode;
+      document.getElementById('prodSku').value = prod.sku || '';
+      document.getElementById('prodCategory').value = prod.category || 'Electronics';
+      document.getElementById('prodCost').value = prod.cost || '';
+      document.getElementById('prodPrice').value = prod.price;
+      document.getElementById('prodStock').value = prod.stock;
+      document.getElementById('prodMinStock').value = prod.minStock || 5;
+
+      document.getElementById('productModalTitle').innerText = appState.language === 'km' ? 'កែប្រែទំនិញ (Edit Product)' : 'Edit Product Details';
+      document.getElementById('productModal').classList.remove('hidden');
+    }
+
+    function closeProductModal() {
+      document.getElementById('productModal').classList.add('hidden');
+    }
+
+    function generateRandomBarcode() {
+      const rand = "885" + Math.floor(1000000000 + Math.random() * 9000000000);
+      document.getElementById('prodBarcode').value = rand;
+    }
+
+    async function handleProductSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('prodEditId').value;
+      const name = document.getElementById('prodName').value.trim();
+      const barcode = document.getElementById('prodBarcode').value.trim();
+      const sku = document.getElementById('prodSku').value.trim() || ('SKU-' + barcode.slice(-4));
+      const category = document.getElementById('prodCategory').value;
+      const cost = parseFloat(document.getElementById('prodCost').value) || 0;
+      const price = parseFloat(document.getElementById('prodPrice').value) || 0;
+      const stock = parseInt(document.getElementById('prodStock').value) || 0;
+      const minStock = parseInt(document.getElementById('prodMinStock').value) || 5;
+
+      if (id) {
+        const index = appState.products.findIndex(p => p.id === id);
+        if (index !== -1) {
+          appState.products[index] = {
+            ...appState.products[index],
+            name, barcode, sku, category, cost, price, stock, minStock
+          };
+        }
+
+        if (supabaseClient && appState.supabaseConfig.connected) {
+          await supabaseClient
+            .from('products')
+            .update({
+              name, barcode, sku, category,
+              cost_price: cost,
+              selling_price: price,
+              stock_in_hand: stock,
+              min_stock_alert: minStock
+            })
+            .eq('id', id)
+            .eq('shop_id', appState.shopProfile.id);
+        }
+        showToast(`Updated "${name}"`, 'check');
+      } else {
+        const newId = crypto.randomUUID ? crypto.randomUUID() : ("prod_" + Date.now());
+        const newProd = {
+          id: newId,
+          name, barcode, sku, category, cost, price, stock,
+          openingStock: stock,
+          soldToday: 0,
+          minStock
+        };
+        appState.products.unshift(newProd);
+
+        if (supabaseClient && appState.supabaseConfig.connected) {
+          await supabaseClient
+            .from('products')
+            .insert({
+              id: newId,
+              shop_id: appState.shopProfile.id,
+              name, barcode, sku, category,
+              cost_price: cost,
+              selling_price: price,
+              stock_in_hand: stock,
+              opening_stock: stock,
+              min_stock_alert: minStock
+            });
+        }
+        showToast(`Created new product "${name}"`, 'check');
+      }
+
+      saveProducts();
+      closeProductModal();
+      renderAll();
+    }
+
+    async function deleteProduct(id) {
+      if (appState.currentUser.role !== 'owner') {
+        showToast("Access Denied: Only Shop Owners can delete items", "alert-triangle");
+        return;
+      }
+      const prod = appState.products.find(p => p.id === id);
+      if (!prod) return;
+
+      appState.products = appState.products.filter(p => p.id !== id);
+      if (supabaseClient && appState.supabaseConfig.connected) {
+        await supabaseClient
+          .from('products')
+          .delete()
+          .eq('id', id)
+          .eq('shop_id', appState.shopProfile.id);
+      }
+
+      saveProducts();
+      renderAll();
+      showToast(`Removed "${prod.name}" from inventory`, 'trash');
+    }
+
+    /* ================= STOCK ADJUSTMENTS ================= */
+    function openReceiveStockModal() {
+      if (appState.products.length === 0) return;
+      openAdjustModalFor(appState.products[0].id);
+    }
+
+    function openAdjustModalFor(id) {
+      const prod = appState.products.find(p => p.id === id);
+      if (!prod) return;
+      document.getElementById('adjustProdId').value = prod.id;
+      document.getElementById('adjustProdName').innerText = `${prod.name} (${prod.sku || prod.barcode})`;
+      document.getElementById('adjustCurrentStock').innerText = prod.stock;
+      document.getElementById('adjustQuantityInput').value = 5;
+      document.getElementById('adjustReasonInput').value = '';
+      document.getElementById('stockAdjustModal').classList.remove('hidden');
+    }
+
+    function closeAdjustModal() {
+      document.getElementById('stockAdjustModal').classList.add('hidden');
+    }
+
+    async function confirmStockAdjustment() {
+      const id = document.getElementById('adjustProdId').value;
+      const qty = parseInt(document.getElementById('adjustQuantityInput').value) || 0;
+      const adjustType = document.querySelector('input[name="adjustType"]:checked')?.value || 'add';
+      const notes = document.getElementById('adjustReasonInput').value.trim() || 'Manual stock update';
+
+      const prod = appState.products.find(p => p.id === id);
+      if (!prod) return;
+
+      let change = 0;
+      if (adjustType === 'add') {
+        prod.stock += qty;
+        change = qty;
+      } else {
+        change = qty - prod.stock;
+        prod.stock = Math.max(0, qty);
+      }
+
+      const movementRecord = {
+        id: "m_" + Date.now(),
+        productName: prod.name,
+        type: adjustType === 'add' ? 'receipt' : 'adjustment',
+        quantityChange: change,
+        notes: notes,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      appState.movements.unshift(movementRecord);
+      saveMovements();
+
+      if (supabaseClient && appState.supabaseConfig.connected) {
+        await supabaseClient
+          .from('products')
+          .update({ stock_in_hand: prod.stock })
+          .eq('id', prod.id)
+          .eq('shop_id', appState.shopProfile.id);
+
+        await supabaseClient
+          .from('stock_movements')
+          .insert({
+            shop_id: appState.shopProfile.id,
+            product_id: prod.id,
+            movement_type: movementRecord.type,
+            quantity_change: change,
+            notes: notes
+          });
+      }
+
+      saveProducts();
+      closeAdjustModal();
+      renderAll();
+      showToast(`Stock updated for ${prod.name} (Now: ${prod.stock})`, 'check');
+    }
+
+    /* ================= DAILY STOCK CLOSING ================= */
+    async function runDailyClosing() {
+      if (appState.currentUser.role !== 'owner') {
+        showToast("Access Denied: Only Shop Owners can run daily closing", "alert-triangle");
+        return;
+      }
+
+      const todayStr = new Date().toLocaleDateString('en-GB');
+      appState.lastClosed = todayStr;
+      localStorage.setItem('shopflow_lastclosed', todayStr);
+
+      appState.products.forEach(p => {
+        p.openingStock = p.stock;
+        p.soldToday = 0;
+      });
+
+      if (supabaseClient && appState.supabaseConfig.connected) {
+        for (const p of appState.products) {
+          await supabaseClient
+            .from('products')
+            .update({ opening_stock: p.stock })
+            .eq('id', p.id)
+            .eq('shop_id', appState.shopProfile.id);
+        }
+      }
+
+      saveProducts();
+      renderAll();
+      showToast(`Daily Stock Closing completed for ${todayStr}`, 'check');
+    }
+
+    /* ================= POS TERMINAL & CART ================= */
+    function renderPosProducts() {
+      const grid = document.getElementById('posProductGrid');
+      const catContainer = document.getElementById('posCategoryFilters');
+
+      const categories = ['All', ...new Set(appState.products.map(p => p.category))];
+      catContainer.innerHTML = categories.map(cat => {
+        const isActive = appState.selectedPosCategory === cat;
+        return `
+          <button onclick="setPosCategory('${cat}')" class="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
+            isActive ? 'bg-brand-600 text-white shadow-xs' : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300'
+          }">
+            ${cat}
+          </button>
+        `;
+      }).join('');
+
+      let filtered = appState.products;
+      if (appState.selectedPosCategory !== 'All') {
+        filtered = filtered.filter(p => p.category === appState.selectedPosCategory);
+      }
+
+      grid.innerHTML = filtered.map(prod => {
+        const isOut = prod.stock <= 0;
+        return `
+          <div onclick="${isOut ? '' : `addToCart('${prod.id}')`}" class="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col justify-between cursor-pointer hover:border-sky-400 hover:shadow-sm transition select-none ${isOut ? 'opacity-50 cursor-not-allowed bg-slate-100' : 'active:scale-95'}">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-semibold text-slate-400 truncate max-w-[80px]">${prod.sku || prod.barcode}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${isOut ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}">
+                  ${isOut ? 'Out' : prod.stock + ' left'}
+                </span>
+              </div>
+              <h4 class="font-bold text-slate-900 text-xs mt-1.5 line-clamp-2">${prod.name}</h4>
+            </div>
+            <div class="mt-3 pt-2 border-t border-slate-100 flex items-baseline justify-between">
+              <span class="font-black text-sky-900 text-sm">${formatUSD(prod.price)}</span>
+              <span class="text-[11px] text-slate-500 font-semibold">${formatKHR(prod.price)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setPosCategory(cat) {
+      appState.selectedPosCategory = cat;
+      renderPosProducts();
+    }
+
+    function addToCart(prodId) {
+      const prod = appState.products.find(p => p.id === prodId);
+      if (!prod || prod.stock <= 0) {
+        showToast('Item is out of stock', 'alert-circle');
+        return;
+      }
+
+      const existing = appState.cart.find(item => item.id === prodId);
+      if (existing) {
+        if (existing.qty + 1 > prod.stock) {
+          showToast(`Cannot exceed in-hand stock (${prod.stock})`, 'alert-triangle');
+          return;
+        }
+        existing.qty += 1;
+      } else {
+        appState.cart.push({
+          id: prod.id,
+          name: prod.name,
+          sku: prod.sku,
+          price: prod.price,
+          cost: prod.cost || 0,
+          qty: 1
+        });
+      }
+      renderCart();
+    }
+
+    function updateCartQty(prodId, delta) {
+      const item = appState.cart.find(i => i.id === prodId);
+      const prod = appState.products.find(p => p.id === prodId);
+      if (!item || !prod) return;
+
+      const newQty = item.qty + delta;
+      if (newQty <= 0) {
+        appState.cart = appState.cart.filter(i => i.id !== prodId);
+      } else if (newQty > prod.stock) {
+        showToast(`Stock limit reached (${prod.stock})`, 'alert-triangle');
+        return;
+      } else {
+        item.qty = newQty;
+      }
+      renderCart();
+    }
+
+    function clearCart() {
+      appState.cart = [];
+      renderCart();
+    }
+
+    function selectPaymentMethod(method) {
+      appState.paymentMethod = method;
+      const isCash = method === 'cash';
+      
+      const btnCash = document.getElementById('btnPayMethodCash');
+      const btnKhqr = document.getElementById('btnPayMethodKHQR');
+      const btnCheckoutText = document.getElementById('btnCheckoutText');
+      
+      btnCash.className = isCash 
+        ? "py-2 px-2 rounded-xl border border-sky-600 bg-sky-50 text-sky-700 font-bold text-xs flex items-center justify-center gap-1.5 transition" 
+        : "py-2 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-slate-50 transition";
+
+      btnKhqr.className = !isCash 
+        ? "py-2 px-2 rounded-xl border border-bakongRed bg-red-50 text-bakongRed font-bold text-xs flex items-center justify-center gap-1.5 transition" 
+        : "py-2 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-slate-50 transition";
+
+      document.getElementById('cashTenderSection').classList.toggle('hidden', !isCash);
+      document.getElementById('khqrPromptSection').classList.toggle('hidden', isCash);
+
+      btnCheckoutText.innerText = isCash 
+        ? (appState.language === 'km' ? 'បញ្ចប់ការលក់ (កត់ត្រាចូលប្រព័ន្ធ)' : 'Complete Sale (Atomic Save)')
+        : (appState.language === 'km' ? 'បង្កើតកូដ KHQR បាគង' : 'Generate Dynamic KHQR Code');
+    }
+
+    function renderCart() {
+      const container = document.getElementById('posCartList');
+      if (appState.cart.length === 0) {
+        container.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-slate-400 py-12">
+            <i data-lucide="shopping-bag" class="w-10 h-10 stroke-[1.2] mb-2 text-slate-300"></i>
+            <p class="text-xs font-semibold">Cart is empty</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Scan barcode or click items</p>
+          </div>
+        `;
+        document.getElementById('posSubtotalUSD').innerText = '$0.00';
+        document.getElementById('posTotalUSD').innerText = '$0.00';
+        document.getElementById('posTotalKHR').innerText = '0 ៛';
+        document.getElementById('posChangeUSD').innerText = '$0.00';
+        document.getElementById('posChangeKHR').innerText = '0 ៛';
+        lucide.createIcons();
+        return;
+      }
+
+      let subtotal = 0;
+      container.innerHTML = appState.cart.map(item => {
+        const lineTotal = item.price * item.qty;
+        subtotal += lineTotal;
+        return `
+          <div class="pt-2 flex items-center justify-between text-xs">
+            <div class="flex-1 pr-2">
+              <div class="font-bold text-slate-900 leading-tight">${item.name}</div>
+              <div class="text-[11px] text-slate-500">${formatUSD(item.price)} × ${item.qty} = <span class="font-bold text-slate-800">${formatUSD(lineTotal)}</span></div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="updateCartQty('${item.id}', -1)" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold">−</button>
+              <span class="w-6 text-center font-bold text-slate-900">${item.qty}</span>
+              <button onclick="updateCartQty('${item.id}', 1)" class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold">+</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('posSubtotalUSD').innerText = formatUSD(subtotal);
+      document.getElementById('posTotalUSD').innerText = formatUSD(subtotal);
+      document.getElementById('posTotalKHR').innerText = formatKHR(subtotal);
+
+      calculateChange();
+      lucide.createIcons();
+    }
+
+    function calculateChange() {
+      const totalUSD = appState.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+      const tenderCurrency = document.getElementById('tenderCurrency').value;
+      const tenderInput = parseFloat(document.getElementById('tenderAmountInput').value) || 0;
+
+      let tenderInUSD = tenderInput;
+      if (tenderCurrency === 'KHR') {
+        tenderInUSD = tenderInput / appState.exchangeRate;
+      }
+
+      const changeUSD = Math.max(0, tenderInUSD - totalUSD);
+      document.getElementById('posChangeUSD').innerText = formatUSD(changeUSD);
+      document.getElementById('posChangeKHR').innerText = formatKHR(changeUSD);
+    }
+
+    function handleBarcodeEnter(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const code = e.target.value.trim();
+        if (!code) return;
+
+        const prod = appState.products.find(p => p.barcode === code || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
+        if (prod) {
+          addToCart(prod.id);
+          playBeep(880, 80);
+          showToast(`Scanned: ${prod.name}`, 'check');
+          e.target.value = '';
+        } else {
+          playBeep(220, 150);
+          showToast(`No product with barcode "${code}"`, 'alert-circle');
+        }
+      }
+    }
+
+    /* ================= CHECKOUT FLOW & DYNAMIC KHQR ================= */
+    function handleCheckoutButtonTrigger() {
+      if (appState.cart.length === 0) {
+        showToast('Cart is empty. Please add products first.', 'alert-triangle');
+        return;
+      }
+
+      if (appState.paymentMethod === 'khqr') {
+        openDynamicKhqrModal();
+      } else {
+        processCheckout('cash');
+      }
+    }
+
+    function openDynamicKhqrModal() {
+      const totalUSD = appState.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+      document.getElementById('khqrShopTitle').innerText = appState.shopProfile.name;
+      document.getElementById('khqrMerchantIdDisplay').innerText = appState.shopProfile.bakongId;
+      document.getElementById('dynamicKhqrModal').classList.remove('hidden');
+
+      renderDynamicKhqrCode();
+      startKhqrPollingTimer();
+    }
+
+    function setKhqrCurrency(curr) {
+      appState.khqrCurrency = curr;
+      const isUsd = curr === 'USD';
+      
+      document.getElementById('khqrToggleUSD').className = isUsd
+        ? "px-4 py-1 rounded-xl text-xs font-bold transition bg-brand-600 text-white shadow-xs"
+        : "px-4 py-1 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200";
+
+      document.getElementById('khqrToggleKHR').className = !isUsd
+        ? "px-4 py-1 rounded-xl text-xs font-bold transition bg-brand-600 text-white shadow-xs"
+        : "px-4 py-1 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200";
+
+      renderDynamicKhqrCode();
+    }
+
+    function renderDynamicKhqrCode() {
+      const container = document.getElementById('khqrCanvasContainer');
+      container.innerHTML = '';
+
+      const totalUSD = appState.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+      const totalKHR = Math.round(totalUSD * appState.exchangeRate);
+      const isUsd = appState.khqrCurrency === 'USD';
+      const payableAmount = isUsd ? totalUSD : totalKHR;
+
+      document.getElementById('khqrModalAmountDisplay').innerText = isUsd ? formatUSD(totalUSD) : `${totalKHR.toLocaleString()} ៛`;
+      document.getElementById('khqrModalAltAmountDisplay').innerText = isUsd ? `${totalKHR.toLocaleString()} ៛` : formatUSD(totalUSD);
+
+      const billRef = "BILL-" + Math.floor(1000 + Math.random() * 9000);
+      const khqrPayload = generateKhqrPayload(
+        appState.shopProfile.bakongId || 'shopflow@aclb',
+        appState.shopProfile.name,
+        appState.shopProfile.merchantCity || 'Phnom Penh',
+        payableAmount,
+        appState.khqrCurrency,
+        billRef
+      );
+
+      appState.currentKhqrString = khqrPayload;
+      document.getElementById('khqrRawStringPreview').innerText = khqrPayload;
+
+      // Render QR Canvas using QRCode.js
+      new QRCode(container, {
+        text: khqrPayload,
+        width: 190,
+        height: 190,
+        colorDark: "#0c192c",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    function copyRawKhqrString() {
+      if (!appState.currentKhqrString) return;
+      const el = document.createElement('textarea');
+      el.value = appState.currentKhqrString;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      showToast('EMVCo KHQR String copied!', 'check');
+    }
+
+    function startKhqrPollingTimer() {
+      let secondsLeft = 30;
+      const timerEl = document.getElementById('khqrPollTimer');
+      clearInterval(appState.khqrPollingInterval);
+
+      appState.khqrPollingInterval = setInterval(() => {
+        secondsLeft--;
+        if (timerEl) timerEl.innerText = `${secondsLeft}s`;
+        if (secondsLeft <= 0) {
+          clearInterval(appState.khqrPollingInterval);
+        }
+      }, 1000);
+    }
+
+    function closeKhqrModal() {
+      clearInterval(appState.khqrPollingInterval);
+      document.getElementById('dynamicKhqrModal').classList.add('hidden');
+    }
+
+    function simulateCustomerPaymentReceived() {
+      playBeep(1200, 200);
+      setTimeout(() => playBeep(1600, 250), 220);
+      closeKhqrModal();
+      showToast('Bakong Payment Verified & Received!', 'check');
+      processCheckout('khqr');
+    }
+
+    /* ================= ATOMIC CHECKOUT EXECUTION ================= */
+    async function processCheckout(forcedMethod = 'cash') {
+      const totalUSD = appState.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+      const isCash = forcedMethod === 'cash';
+      const tenderCurrency = document.getElementById('tenderCurrency').value;
+      let tenderInput = isCash ? (parseFloat(document.getElementById('tenderAmountInput').value) || totalUSD) : totalUSD;
+      let tenderInUSD = isCash && tenderCurrency === 'KHR' ? tenderInput / appState.exchangeRate : tenderInput;
+
+      if (isCash && tenderInUSD < totalUSD - 0.001) {
+        showToast('Tendered cash is less than total due!', 'alert-triangle');
+        return;
+      }
+
+      const receiptId = "REC-" + Math.floor(1000 + Math.random() * 9000);
+      const changeUSD = Math.max(0, tenderInUSD - totalUSD);
+
+      // Decrement stock in memory
+      appState.cart.forEach(cartItem => {
+        const prod = appState.products.find(p => p.id === cartItem.id);
+        if (prod) {
+          prod.stock = Math.max(0, prod.stock - cartItem.qty);
+          prod.soldToday = (prod.soldToday || 0) + cartItem.qty;
+
+          appState.movements.unshift({
+            id: "m_" + Date.now() + "_" + prod.id,
+            productName: prod.name,
+            type: 'sale',
+            quantityChange: -cartItem.qty,
+            notes: `Sale #${receiptId}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+        }
+      });
+      saveProducts();
+      saveMovements();
+
+      const newSale = {
+        id: receiptId,
+        timestamp: new Date().toISOString(),
+        paymentMethod: forcedMethod,
+        items: [...appState.cart],
+        totalUSD: totalUSD,
+        totalKHR: totalUSD * appState.exchangeRate,
+        tenderedUSD: tenderInUSD,
+        changeUSD: changeUSD
+      };
+
+      appState.sales.unshift(newSale);
+      saveSales();
+
+      // Atomic Stored Procedure RPC Call if Supabase is connected
+      if (supabaseClient && appState.supabaseConfig.connected) {
+        try {
+          const itemsPayload = appState.cart.map(i => ({
+            product_id: i.id,
+            product_name: i.name,
+            quantity: i.qty,
+            unit_price: i.price,
+            cost_price: i.cost || 0
+          }));
+
+          const { error: rpcErr } = await supabaseClient.rpc('process_sale', {
+            p_shop_id: appState.shopProfile.id,
+            p_receipt_code: receiptId,
+            p_payment_method: forcedMethod,
+            p_total_usd: totalUSD,
+            p_total_khr: Math.round(totalUSD * appState.exchangeRate),
+            p_tendered_usd: tenderInUSD,
+            p_change_usd: changeUSD,
+            p_items: itemsPayload
+          });
+
+          if (rpcErr) {
+            console.warn("RPC execution failed, falling back to direct table inserts:", rpcErr);
+            await supabaseClient.from('sales').insert({
+              shop_id: appState.shopProfile.id,
+              receipt_code: receiptId,
+              payment_method: forcedMethod,
+              total_usd: totalUSD,
+              total_khr: Math.round(totalUSD * appState.exchangeRate),
+              tendered_usd: tenderInUSD,
+              change_usd: changeUSD
+            });
+          }
+        } catch (dbErr) {
+          console.error("Database sale logging failed:", dbErr);
+        }
+      }
+
+      showReceiptModal(newSale);
+
+      appState.cart = [];
+      document.getElementById('tenderAmountInput').value = '';
+      renderCart();
+      updateMetricCards();
+      renderInventoryTable();
+      showToast(`Sale #${receiptId} recorded successfully!`, 'check');
+    }
+
+    function showReceiptModal(sale) {
+      document.getElementById('rcptShopTitle').innerText = appState.shopProfile.name;
+      document.getElementById('rcptAddress').innerText = appState.shopProfile.address;
+      document.getElementById('rcptId').innerText = sale.id;
+      document.getElementById('rcptTime').innerText = new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('rcptCashierName').innerText = appState.currentUser.email.split('@')[0];
+      document.getElementById('rcptPaymentMethod').innerText = sale.paymentMethod;
+
+      const container = document.getElementById('rcptItemsContainer');
+      container.innerHTML = sale.items.map(i => `
+        <div class="flex justify-between py-1 border-b border-dashed border-slate-200">
+          <div>
+            <div class="font-bold text-slate-800">${i.name}</div>
+            <div class="text-[10px] text-slate-500">${formatUSD(i.price)} × ${i.qty}</div>
+          </div>
+          <span class="font-bold text-slate-800">${formatUSD(i.price * i.qty)}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('rcptTotalUSD').innerText = formatUSD(sale.totalUSD);
+      document.getElementById('rcptTotalKHR').innerText = formatKHR(sale.totalUSD);
+      document.getElementById('rcptTendered').innerText = formatUSD(sale.tenderedUSD);
+      document.getElementById('rcptChange').innerText = formatUSD(sale.changeUSD);
+      document.getElementById('rcptBakongDisplay').innerText = appState.shopProfile.bakongId 
+        ? `Bakong ID: ${appState.shopProfile.bakongId}`
+        : 'Scan with any Cambodian Bank App';
+
+      // Render static/mini receipt KHQR
+      const rcptQrBox = document.getElementById('rcptKhqrContainer');
+      rcptQrBox.innerHTML = '';
+      const receiptKhqr = generateKhqrPayload(
+        appState.shopProfile.bakongId,
+        appState.shopProfile.name,
+        appState.shopProfile.merchantCity,
+        sale.totalUSD,
+        'USD',
+        sale.id
+      );
+      new QRCode(rcptQrBox, {
+        text: receiptKhqr,
+        width: 90,
+        height: 90,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.L
+      });
+
+      document.getElementById('receiptModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeReceiptModal() {
+      document.getElementById('receiptModal').classList.add('hidden');
+    }
+
+    /* ================= WEBCAM BARCODE SCANNER ================= */
+    function startScanner() {
+      const overlay = document.getElementById("scannerOverlay");
+      const laser = document.getElementById("laserLine");
+
+      overlay.classList.add("hidden");
+      laser.classList.remove("hidden");
+      document.getElementById("btnStartCamera").classList.add("hidden");
+      document.getElementById("btnStopCamera").classList.remove("hidden");
+
+      if (!html5QrScanner) {
+        html5QrScanner = new Html5Qrcode("reader");
+      }
+
+      const config = {
+        fps: 12,
+        qrbox: { width: 260, height: 180 },
+        aspectRatio: 1.777778
+      };
+
+      html5QrScanner.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          onBarcodeDetected(decodedText);
+        },
+        () => {}
+      ).catch(err => {
+        console.error("Camera access error:", err);
+        showToast("Unable to start webcam. Please grant camera permissions.", "alert-triangle");
+        stopScanner();
+      });
+    }
+
+    function stopScanner() {
+      if (html5QrScanner) {
+        html5QrScanner.stop().then(() => {
+          document.getElementById("scannerOverlay").classList.remove("hidden");
+          document.getElementById("laserLine").classList.add("hidden");
+          document.getElementById("btnStartCamera").classList.remove("hidden");
+          document.getElementById("btnStopCamera").classList.add("hidden");
+        }).catch(err => console.log(err));
+      } else {
+        document.getElementById("scannerOverlay").classList.remove("hidden");
+        document.getElementById("laserLine").classList.add("hidden");
+        document.getElementById("btnStartCamera").classList.remove("hidden");
+        document.getElementById("btnStopCamera").classList.add("hidden");
+      }
+    }
+
+    function onBarcodeDetected(code) {
+      playBeep(880, 80);
+      const prod = appState.products.find(p => p.barcode === code.trim());
+      const resultBox = document.getElementById('scannedProductResult');
+
+      if (prod) {
+        appState.lastScannedProduct = prod;
+        document.getElementById('scannedName').innerText = prod.name;
+        document.getElementById('scannedBarcode').innerText = prod.barcode;
+        document.getElementById('scannedStock').innerText = prod.stock;
+        document.getElementById('scannedPrice').innerText = `${formatUSD(prod.price)} (${formatKHR(prod.price)})`;
+        resultBox.classList.remove('hidden');
+        showToast(`Identified: ${prod.name}`, 'check');
+      } else {
+        showToast(`Unknown Barcode: ${code}. You can register it in Stock Inventory.`, 'alert-circle');
+      }
+    }
+
+    function handleSimulatedScan() {
+      const code = document.getElementById('manualScannerInput').value.trim();
+      if (!code) return;
+      onBarcodeDetected(code);
+    }
+
+    function addScannedToCart() {
+      if (appState.lastScannedProduct) {
+        addToCart(appState.lastScannedProduct.id);
+        navigateTo('pos');
+        showToast(`Added ${appState.lastScannedProduct.name} to POS cart`, 'check');
+      }
+    }
+
+    /* ================= REPORTS & ANALYTICS ================= */
+    function renderReports() {
+      const tbody = document.getElementById('salesTableBody');
+      const movesTbody = document.getElementById('movementsTableBody');
+      const revUSD = appState.sales.reduce((acc, s) => acc + (parseFloat(s.totalUSD) || 0), 0);
+      
+      let profitUSD = 0;
+      appState.sales.forEach(sale => {
+        sale.items.forEach(item => {
+          const itemCost = item.cost || 0;
+          profitUSD += (item.price - itemCost) * item.qty;
+        });
+      });
+
+      document.getElementById('reportRevUSD').innerText = formatUSD(revUSD);
+      document.getElementById('reportRevKHR').innerText = formatKHR(revUSD);
+      document.getElementById('reportProfitUSD').innerText = formatUSD(profitUSD);
+      document.getElementById('reportTxCount').innerText = appState.sales.length;
+      document.getElementById('salesRecordCount').innerText = `${appState.sales.length} orders recorded`;
+      document.getElementById('movementsCount').innerText = `${appState.movements.length} log events`;
+
+      movesTbody.innerHTML = appState.movements.slice(0, 15).map(m => `
+        <tr class="hover:bg-slate-50">
+          <td class="py-2.5 px-4 text-slate-500 font-mono">${m.timestamp}</td>
+          <td class="py-2.5 px-4 font-bold text-slate-800">${m.productName}</td>
+          <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            m.type === 'sale' ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'
+          }">${m.type.toUpperCase()}</span></td>
+          <td class="py-2.5 px-4 font-bold ${m.quantityChange > 0 ? 'text-emerald-600' : 'text-rose-600'}">
+            ${m.quantityChange > 0 ? '+' : ''}${m.quantityChange}
+          </td>
+          <td class="py-2.5 px-4 text-slate-500">${m.notes || '--'}</td>
+        </tr>
+      `).join('');
+
+      if (appState.sales.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="text-center py-8 text-slate-400">No sales transactions registered today.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = appState.sales.map(s => {
+        const dateStr = new Date(s.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        const summary = s.items.map(i => `${i.name} (x${i.qty})`).join(', ');
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-3 px-4 font-mono font-bold text-sky-700">${s.id}</td>
+            <td class="py-3 px-4 text-slate-600">${dateStr}</td>
+            <td class="py-3 px-4 text-slate-800 max-w-xs truncate" title="${summary}">${summary}</td>
+            <td class="py-3 px-4 uppercase text-slate-600 font-bold">${s.paymentMethod || 'cash'}</td>
+            <td class="py-3 px-4 font-black text-slate-900">${formatUSD(s.totalUSD)}</td>
+            <td class="py-3 px-4 text-emerald-600 font-bold">${formatKHR(s.totalUSD)}</td>
+            <td class="py-3 px-4 text-center">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Completed</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    /* CSV Exports */
+    function exportSalesToCSV() {
+      if (appState.sales.length === 0) {
+        showToast('No sales data available to export', 'alert-circle');
+        return;
+      }
+
+      let csv = "Receipt ID,Timestamp,Payment Method,Items,Total USD,Total KHR,Tendered USD,Change USD\n";
+      appState.sales.forEach(s => {
+        const itemSummary = s.items.map(i => `${i.name} x${i.qty}`).join('; ');
+        csv += `"${s.id}","${s.timestamp}","${s.paymentMethod || 'cash'}","${itemSummary}",${s.totalUSD},${s.totalKHR},${s.tenderedUSD},${s.changeUSD}\n`;
+      });
+
+      downloadCSV(csv, `shopflow_sales_${new Date().toISOString().slice(0,10)}.csv`);
+      showToast('Sales CSV exported successfully', 'download');
+    }
+
+    function exportStockToCSV() {
+      let csv = "Product ID,Product Name,SKU,Barcode,Category,Cost USD,Price USD,Price KHR,Stock In Hand,Min Stock Alert\n";
+      appState.products.forEach(p => {
+        csv += `"${p.id}","${p.name}","${p.sku}","${p.barcode}","${p.category}",${p.cost},${p.price},${p.price * appState.exchangeRate},${p.stock},${p.minStock}\n`;
+      });
+
+      downloadCSV(csv, `shopflow_inventory_${new Date().toISOString().slice(0,10)}.csv`);
+      showToast('Inventory CSV exported successfully', 'download');
+    }
+
+    function downloadCSV(csvContent, filename) {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    /* ================= SETTINGS ================= */
+    function loadSettingsInputs() {
+      document.getElementById('settingShopName').value = appState.shopProfile.name;
+      document.getElementById('settingExchangeRate').value = appState.exchangeRate;
+      document.getElementById('settingShopAddress').value = appState.shopProfile.address;
+      document.getElementById('settingBakongId').value = appState.shopProfile.bakongId || '';
+      document.getElementById('settingMerchantCity').value = appState.shopProfile.merchantCity || 'Phnom Penh';
+    }
+
+    function saveSettings() {
+      const name = document.getElementById('settingShopName').value.trim() || 'My Cambodian Shop';
+      const rate = parseFloat(document.getElementById('settingExchangeRate').value) || 4100;
+      const address = document.getElementById('settingShopAddress').value.trim() || 'Phnom Penh';
+      const bakong = document.getElementById('settingBakongId').value.trim() || 'shopflow@aclb';
+      const city = document.getElementById('settingMerchantCity').value.trim() || 'Phnom Penh';
+
+      appState.shopProfile.name = name;
+      appState.shopProfile.address = address;
+      appState.shopProfile.bakongId = bakong;
+      appState.shopProfile.merchantCity = city;
+      appState.exchangeRate = rate;
+
+      localStorage.setItem('shopflow_shop', JSON.stringify(appState.shopProfile));
+      localStorage.setItem('shopflow_rate', rate.toString());
+
+      if (supabaseClient && appState.supabaseConfig.connected) {
+        supabaseClient
+          .from('shops')
+          .update({ name, address, exchange_rate: rate, bakong_id: bakong, merchant_city: city })
+          .eq('id', appState.shopProfile.id)
+          .then();
+      }
+
+      renderAll();
+      showToast('Shop & KHQR settings saved successfully', 'check');
+    }
+
+    function resetDefaultData() {
+      localStorage.clear();
+      appState.products = DEFAULT_PRODUCTS;
+      appState.exchangeRate = 4100;
+      appState.sales = [];
+      appState.movements = [];
+      appState.cart = [];
+      saveProducts();
+      renderAll();
+      showToast('Reset to clean demo data', 'info');
+    }
+
+    function handleGlobalSearch(term) {
+      if (!term.trim()) return;
+      if (appState.activeTab !== 'inventory') {
+        navigateTo('inventory');
+      }
+      const invInput = document.getElementById('inventorySearchInput');
+      if (invInput) {
+        invInput.value = term;
+        renderInventoryTable();
+      }
+    }
+
+    /* ================= TOAST NOTIFICATIONS ================= */
+    let toastTimer = null;
+    function showToast(message, iconName = 'info') {
+      const box = document.getElementById('toastBox');
+      const msg = document.getElementById('toastMsg');
+      const icon = document.getElementById('toastIcon');
+
+      msg.innerText = message;
+      icon.setAttribute('data-lucide', iconName);
+      lucide.createIcons();
+
+      box.classList.remove('translate-y-20', 'opacity-0');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        box.classList.add('translate-y-20', 'opacity-0');
+      }, 3200);
+    }
+  </script>
+</body>
+</html>
